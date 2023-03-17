@@ -1,0 +1,5 @@
+#define UPDATE_VERSION 150
+#define REVISION_VERSION "1fd0cdd9a"
+#define MAJOR_VERSION 7
+#define PRODUCT_NAME "Itasca Code Framework"
+#define PRODUCT_VERSION "7"

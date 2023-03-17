@@ -1,0 +1,2 @@
+#include "../baseversion.txt"
+#define FILE_DESCRIPTION  "Constitutive Model Base Library"
