@@ -211,6 +211,7 @@ namespace jmodels
     {
         ////Linear Softening
         soft_tension = tension_ * (1 + (s->normal_disp_-(tension_/kn_))/((tension_/kn_)-(2*G_I/tension_)));
+        Double t = 0.0;
         ////Exponential Softening
         //soft_tension = tension_ * exp(-(tension_ / G_I * (s->normal_disp_ - (tension_ / kn_))));
         ten = -soft_tension * s->area_;
