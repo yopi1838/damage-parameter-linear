@@ -164,6 +164,7 @@ namespace jmodels
     tan_res_friction_ = mm->tan_res_friction_;
     G_I = mm->G_I;
     G_II = mm->G_II;
+    soft_tension = mm->soft_tension;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -204,14 +205,18 @@ namespace jmodels
     }
 
     // tensile strength
-    //Double soft_ten;
     Double ten;
     //Define the softening tensile strength
-    soft_tension = -tension_ * (1 + (s->normal_disp_-(-tension_/kn_))/((-tension_/kn_)-(2*G_I/-tension_)));
     if (s->state_)
-      ten = -soft_tension * s->area_;
+    {
+        ////Linear Softening
+        soft_tension = tension_ * (1 + (s->normal_disp_-(tension_/kn_))/((tension_/kn_)-(2*G_I/tension_)));
+        ////Exponential Softening
+        //soft_tension = tension_ * exp(-(tension_ / G_I * (s->normal_disp_ - (tension_ / kn_))));
+        ten = -soft_tension * s->area_;
+    }
     else
-      ten = -tension_ * s->area_;
+        ten = -tension_ * s->area_;
 
     // check tensile failure
     bool tenflag = false;
