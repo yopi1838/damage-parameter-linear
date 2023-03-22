@@ -211,6 +211,7 @@ namespace jmodels
     {
         ////Linear Softening
         soft_tension = tension_ * (1 + (s->normal_disp_-(tension_/kn_))/((tension_/kn_)-(2*G_I/tension_)));
+        Double t = 0.0;
         ////Exponential Softening
         //soft_tension = tension_ * exp(-(tension_ / G_I * (s->normal_disp_ - (tension_ / kn_))));
         ten = -soft_tension * s->area_;
@@ -256,13 +257,13 @@ namespace jmodels
         //save the maximum shear stress
         Double resamueff = tan_res_friction_;
         if (!resamueff) resamueff = tan_friction_;
-        //Double tmax = cohesion_ * s->area_ + tan_friction_ * s->normal_force_;
-        //Double tres = res_cohesion_ * s->area_ + resamueff * s->normal_force_;
-        //Double ul = (2 * G_II) / (tmax - tres) + tres / ks_;
+        Double tmax = cohesion_ * s->area_ + tan_friction_ * s->normal_force_;
+        Double tres = res_cohesion_ * s->area_ + resamueff * s->normal_force_;
+        Double ul = (2 * G_II) / (tmax - tres) + tres / ksa;
         ////Current cohesion, friction, and shear resistance
-        //Double cc = cohesion_ + (cohesion_ - res_cohesion_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);
-        //Double tan_friction_c = tan_friction_ + (tan_friction_ - tan_res_friction_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);
-        //Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+        Double cc = cohesion_ + (cohesion_ - res_cohesion_) * (s->shear_disp_.mag() - (tmax / ksa)) / ((tmax / ksa) - ul);
+        Double tan_friction_c = tan_friction_ + (tan_friction_ - tan_res_friction_) * (s->shear_disp_.mag() - (tmax / ksa)) / ((tmax / ksa) - ul);
+        Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
         fsmax = res_cohesion_ * s->area_ + resamueff * s->normal_force_;
         //fsmax = tc;
       }
