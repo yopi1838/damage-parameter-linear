@@ -94,7 +94,7 @@ namespace jmodels
   {
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II, soft-tension");
+          L"tension-residual, G_I, G_II, soft-tension, cc");
   }
 
   String JModelYopi::getStates() const
@@ -119,6 +119,7 @@ namespace jmodels
     case 11: return G_I;
     case 12: return G_II;
     case 13: return soft_tension;
+    case 14: return cc;
     }
     return 0.0;
   }
@@ -165,6 +166,7 @@ namespace jmodels
     G_I = mm->G_I;
     G_II = mm->G_II;
     soft_tension = mm->soft_tension;
+    cc = mm->cc;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -173,6 +175,8 @@ namespace jmodels
     tan_friction_    = tan(friction_ * dDegRad);
     tan_res_friction_ = tan(res_friction_ * dDegRad);
     tan_dilation_    = tan(dilation_ * dDegRad);
+    soft_tension = 0.0;
+    cc = 0.0;
   }
 
   void JModelYopi::run(UByte dim,State *s)
@@ -264,7 +268,7 @@ namespace jmodels
         /*Double cc = cohesion_ + (cohesion_ - res_cohesion_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);
         Double tan_friction_c = tan_friction_ + (tan_friction_ - tan_res_friction_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);*/
         ////Exponential Softening
-        Double cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_/G_II)*(s->shear_disp_.mag()-(tmax/ks_))));
+        cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_/G_II)*(s->shear_disp_.mag()-(tmax/ks_))));
         Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc)/(cohesion_ - res_cohesion_));
         Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
         //fsmax = res_cohesion_ * s->area_ + resamueff * s->normal_force_;

@@ -41,8 +41,9 @@ namespace jmodels
     Double tan_dilation_;
     Double tan_res_friction_;
     Double G_I; //first mode fracture energy
-    Double G_II;
-    Double soft_tension;
+    Double G_II; //Second mode fracture energy
+    Double soft_tension; //Softening part of tensile strength
+    Double cc; //Softening part of shear strength
     Int    kn_tab_;
     Int    ks_tab_;
   };
