@@ -210,13 +210,19 @@ namespace jmodels
 
     // tensile strength
     Double ten;
+    //Calculate max shear stress            
+    Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+
     //Define the softening tensile strength
     if (s->state_)
     {
         ////Linear Softening
         //soft_tension = tension_ * (1 + (s->normal_disp_-(tension_/kn_))/((tension_/kn_)-(2*G_I/tension_)));
         ////Exponential Softening
-        soft_tension = tension_ * exp(-(tension_ / G_I * (s->normal_disp_ - (tension_ / kn_))));
+        //Introduce k1 parameter;
+        Double k1_ = (s->normal_disp_ - (tension_ / kn_)) + G_I / G_II * cohesion_ / tension_ * (s->shear_disp_.mag() - (tmax / ks_));
+        soft_tension = tension_ * exp(-(tension_ / G_I * k1_));
+        //soft_tension = tension_ * exp(-(tension_ / G_I * (s->normal_disp_ - (tension_ / kn_))));
         ten = -soft_tension * s->area_;
     }
     else
@@ -253,9 +259,11 @@ namespace jmodels
         if (s->state_) {
             Double resamueff = tan_res_friction_;
             if (!resamueff) resamueff = tan_friction_;
-            //Calculate max shear stress
-            Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_ / G_II) * (s->shear_disp_.mag() - (tmax / ks_))));
+            //Introduce K1 and K2 softening parameter
+            Double& tmax_2 = tmax;
+            Double k2_ = (s->shear_disp_.mag() - (tmax_2 / ks_)) + G_II / G_I * tension_ / cohesion_ * (s->normal_disp_ - (tension_ / kn_));
+            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_ / G_II) * k2_));
+            //cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_ / G_II) * (s->shear_disp_.mag() - (tmax / ks_))));
             Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc) / (cohesion_ - res_cohesion_));
             Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
             fsmax = tc;
