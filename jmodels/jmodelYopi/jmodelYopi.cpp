@@ -224,7 +224,9 @@ namespace jmodels
 
     // check tensile failure
     bool tenflag = false;
-    if (s->normal_force_ <= ten) 
+    Double f1 = s->normal_force_ - ten;
+    // Change the criterion to f1 criterion for tensile instead
+    if (f1 <= 0) 
     {
       s->normal_force_  = ten;
       if (!s->normal_force_)
@@ -248,6 +250,7 @@ namespace jmodels
     {
       s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
       s->shear_force_ += s->shear_force_inc_;
+      Double f2 = s->shear_force_.mag();
       Double fsm = s->shear_force_.mag();
       // shear strength
       Double fsmax;
@@ -261,12 +264,6 @@ namespace jmodels
         Double resamueff = tan_res_friction_;
         if (!resamueff) resamueff = tan_friction_;
         Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-        //Double tres = res_cohesion_  + resamueff * s->normal_force_ / s->area_;
-        //Double ul = (2 * G_II) / (tmax - tres) + tres / ks_;
-        ////Current cohesion, friction, and shear resistance
-        ////Linear Softening
-        /*Double cc = cohesion_ + (cohesion_ - res_cohesion_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);
-        Double tan_friction_c = tan_friction_ + (tan_friction_ - tan_res_friction_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);*/
         ////Exponential Softening
         cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_/G_II)*(s->shear_disp_.mag()-(tmax/ks_))));
         Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc)/(cohesion_ - res_cohesion_));
