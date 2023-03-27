@@ -224,7 +224,8 @@ namespace jmodels
 
     // check tensile failure
     bool tenflag = false;
-    Double f1 = s->normal_force_ - ten;
+    Double f1;
+    f1 = s->normal_force_ - ten;
     // Change the criterion to f1 criterion for tensile instead
     if (f1 <= 0) 
     {
@@ -235,75 +236,40 @@ namespace jmodels
         tenflag = true; // complete tensile failure
       }
       s->state_ |= tension_now;
-      /*if (s->normal_force_ <= 0) {
-          s->normal_force_inc_ = (tension_ - soft_tension);
-      }
-      else {
-          s->normal_force_inc_ = 0;
-      }*/
       s->normal_force_inc_ = 0;
       s->shear_force_inc_ = DVect3(0,0,0);
     }
 
     // shear force
-    if (!tenflag) 
+    if (!tenflag)
     {
-      s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
-      s->shear_force_ += s->shear_force_inc_;
-      Double f2 = s->shear_force_.mag();
-      Double fsm = s->shear_force_.mag();
-      // shear strength
-      Double fsmax;
-      if (!s->state_)
-        fsmax = cohesion_ * s->area_ + tan_friction_ * s->normal_force_;
-      else 
-      { 
-        // if residual friction is zero, take peak value
-        //Try applying residual softening on the shear side too.
-        //save the maximum shear stress
-        Double resamueff = tan_res_friction_;
-        if (!resamueff) resamueff = tan_friction_;
-        Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-        ////Exponential Softening
-        cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_/G_II)*(s->shear_disp_.mag()-(tmax/ks_))));
-        Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc)/(cohesion_ - res_cohesion_));
-        Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-        //fsmax = res_cohesion_ * s->area_ + resamueff * s->normal_force_;
-        fsmax = tc;
-      }
-      if (fsmax < 0.0) fsmax = 0.0;
-      //  check for slip
-      if (fsm >= fsmax) 
-      {
-        Double rat = 0.0;
-        if (fsm) rat = fsmax / fsm;
-        s->shear_force_ *= rat;
-        s->state_ |= slip_now;
-        s->shear_force_inc_ = DVect3(0,0,0);
-        // dilation
-        if (dilation_)
+        s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
+        s->shear_force_ += s->shear_force_inc_;
+        //Because the normal force is already in negative anyway, we don't have to change the signs
+        Double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
+        Double fsm = s->shear_force_.mag();
+        if (fsmax < 0.0) fsmax = 0.0;
+        Double f2 = fsm - fsmax;
+        if (s->state_) {
+            Double resamueff = tan_res_friction_;
+            if (!resamueff) resamueff = tan_friction_;
+            //Calculate max shear stress
+            Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_ / G_II) * (s->shear_disp_.mag() - (tmax / ks_))));
+            Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc) / (cohesion_ - res_cohesion_));
+            Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+            fsmax = tc;
+            f2 = fsm - tc;
+        }
+        //Check if slip
+        if (f2 >= 0.0) 
         {
-          Double zdd = zero_dilation_;
-          Double usm = s->shear_disp_.mag();
-          if (!zdd) zdd = 1e20;
-          if (usm < zdd) 
-          {
-            Double dusm  = s->shear_disp_inc_.mag();
-            Double dil = 0.0;
-            if (!s->state_) dil = tan_dilation_;
-            else
-            {
-              // if residual dilation is zero, take peak value
-              //     Double resdileff = tan_res_dilation_;
-              // Note: In CLJ1 in 3DEC, no residual dilation is defined
-              Double resdileff = tan_dilation_;
-              if (!resdileff) resdileff = tan_dilation_;
-              dil = resdileff;
-            }
-            s->normal_force_ += kna * dil * dusm;
-          }
-        } // dilation
-      } // fsm>fsmax
+            s->state_ |= slip_now;
+            Double rat = 0.0;
+            if (fsm) rat = fsmax / fsm;
+            s->shear_force_ *= rat;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+        }
     } // if (!tenflg)
   }
 
