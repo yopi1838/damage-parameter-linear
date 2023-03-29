@@ -268,11 +268,34 @@ namespace jmodels
         //Check if slip
         if (f2 >= 0.0) 
         {
-            s->state_ |= slip_now;
             Double rat = 0.0;
             if (fsm) rat = fsmax / fsm;
             s->shear_force_ *= rat;
+            s->state_ |= slip_now;
             s->shear_force_inc_ = DVect3(0, 0, 0);
+            // dilation
+            if (dilation_)
+            {
+                Double zdd = zero_dilation_;
+                Double usm = s->shear_disp_.mag();
+                if (!zdd) zdd = 1e20;
+                if (usm < zdd)
+                {
+                    Double dusm = s->shear_disp_inc_.mag();
+                    Double dil = 0.0;
+                    if (!s->state_) dil = tan_dilation_;
+                    else
+                    {
+                        // if residual dilation is zero, take peak value
+                        //     Double resdileff = tan_res_dilation_;
+                        // Note: In CLJ1 in 3DEC, no residual dilation is defined
+                        Double resdileff = tan_dilation_;
+                        if (!resdileff) resdileff = tan_dilation_;
+                        dil = resdileff;
+                    }
+                    s->normal_force_ += kna * dil * dusm;
+                }
+            }
         }
     } // if (!tenflg)
   }
