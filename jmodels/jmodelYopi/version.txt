@@ -1,6 +1,6 @@
 #define MAJOR_VERSION     7
-#define UPDATE_VERSION    1
+#define UPDATE_VERSION    2
 #define REVISION_VERSION  1
-#define FILE_DESCRIPTION  "Example JModel library"
-#define PRODUCT_NAME      "Example JModel dynamic link library"
+#define FILE_DESCRIPTION  "Yopi JModel library"
+#define PRODUCT_NAME      "Yopi JModel dynamic link library"
 #define PRODUCT_VERSION   100
