@@ -210,13 +210,16 @@ namespace jmodels
 
     // tensile strength
     Double ten;
+    //Calculate max shear stress            
+    Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+
     //Define the softening tensile strength
     if (s->state_)
     {
-        ////Linear Softening
-        //soft_tension = tension_ * (1 + (s->normal_disp_-(tension_/kn_))/((tension_/kn_)-(2*G_I/tension_)));
         ////Exponential Softening
-        soft_tension = tension_ * exp(-(tension_ / G_I * (s->normal_disp_ - (tension_ / kn_))));
+        //Introduce k1 parameter;
+        Double k1_ = (s->normal_disp_ - (tension_ / kn_)) + G_I / G_II * cohesion_ / tension_ * (s->shear_disp_.mag() - (tmax / ks_));
+        soft_tension = tension_ * exp(-(tension_ / G_I * k1_));
         ten = -soft_tension * s->area_;
     }
     else
@@ -224,7 +227,10 @@ namespace jmodels
 
     // check tensile failure
     bool tenflag = false;
-    if (s->normal_force_ <= ten) 
+    Double f1;
+    f1 = s->normal_force_ - ten;
+    // Change the criterion to f1 criterion for tensile instead
+    if (f1 <= 0) 
     {
       s->normal_force_  = ten;
       if (!s->normal_force_)
@@ -233,80 +239,64 @@ namespace jmodels
         tenflag = true; // complete tensile failure
       }
       s->state_ |= tension_now;
-      /*if (s->normal_force_ <= 0) {
-          s->normal_force_inc_ = (tension_ - soft_tension);
-      }
-      else {
-          s->normal_force_inc_ = 0;
-      }*/
       s->normal_force_inc_ = 0;
       s->shear_force_inc_ = DVect3(0,0,0);
     }
 
     // shear force
-    if (!tenflag) 
+    if (!tenflag)
     {
-      s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
-      s->shear_force_ += s->shear_force_inc_;
-      Double fsm = s->shear_force_.mag();
-      // shear strength
-      Double fsmax;
-      if (!s->state_)
-        fsmax = cohesion_ * s->area_ + tan_friction_ * s->normal_force_;
-      else 
-      { 
-        // if residual friction is zero, take peak value
-        //Try applying residual softening on the shear side too.
-        //save the maximum shear stress
-        Double resamueff = tan_res_friction_;
-        if (!resamueff) resamueff = tan_friction_;
-        Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-        //Double tres = res_cohesion_  + resamueff * s->normal_force_ / s->area_;
-        //Double ul = (2 * G_II) / (tmax - tres) + tres / ks_;
-        ////Current cohesion, friction, and shear resistance
-        ////Linear Softening
-        /*Double cc = cohesion_ + (cohesion_ - res_cohesion_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);
-        Double tan_friction_c = tan_friction_ + (tan_friction_ - tan_res_friction_) * (s->shear_disp_.mag() - (tmax / ks_)) / ((tmax / ks_) - ul);*/
-        ////Exponential Softening
-        cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_/G_II)*(s->shear_disp_.mag()-(tmax/ks_))));
-        Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc)/(cohesion_ - res_cohesion_));
-        Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-        //fsmax = res_cohesion_ * s->area_ + resamueff * s->normal_force_;
-        fsmax = tc;
-      }
-      if (fsmax < 0.0) fsmax = 0.0;
-      //  check for slip
-      if (fsm >= fsmax) 
-      {
-        Double rat = 0.0;
-        if (fsm) rat = fsmax / fsm;
-        s->shear_force_ *= rat;
-        s->state_ |= slip_now;
-        s->shear_force_inc_ = DVect3(0,0,0);
-        // dilation
-        if (dilation_)
+        s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
+        s->shear_force_ += s->shear_force_inc_;
+        //Because the normal force is already in negative anyway, we don't have to change the signs
+        Double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
+        Double fsm = s->shear_force_.mag();
+        if (fsmax < 0.0) fsmax = 0.0;
+        Double f2 = fsm - fsmax;
+        if (s->state_) {
+            Double resamueff = tan_res_friction_;
+            if (!resamueff) resamueff = tan_friction_;
+            //Introduce K1 and K2 softening parameter
+            Double& tmax_2 = tmax;
+            Double k2_ = (s->shear_disp_.mag() - (tmax_2 / ks_)) + G_II / G_I * tension_ / cohesion_ * (s->normal_disp_ - (tension_ / kn_));
+            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_ / G_II) * k2_));
+            Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc) / (cohesion_ - res_cohesion_));
+            Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+            fsmax = tc;
+            f2 = fsm - tc;
+        }
+        //Check if slip
+        if (f2 >= 0.0) 
         {
-          Double zdd = zero_dilation_;
-          Double usm = s->shear_disp_.mag();
-          if (!zdd) zdd = 1e20;
-          if (usm < zdd) 
-          {
-            Double dusm  = s->shear_disp_inc_.mag();
-            Double dil = 0.0;
-            if (!s->state_) dil = tan_dilation_;
-            else
+            Double rat = 0.0;
+            if (fsm) rat = fsmax / fsm;
+            s->shear_force_ *= rat;
+            s->state_ |= slip_now;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+            // dilation
+            if (dilation_)
             {
-              // if residual dilation is zero, take peak value
-              //     Double resdileff = tan_res_dilation_;
-              // Note: In CLJ1 in 3DEC, no residual dilation is defined
-              Double resdileff = tan_dilation_;
-              if (!resdileff) resdileff = tan_dilation_;
-              dil = resdileff;
+                Double zdd = zero_dilation_;
+                Double usm = s->shear_disp_.mag();
+                if (!zdd) zdd = 1e20;
+                if (usm < zdd)
+                {
+                    Double dusm = s->shear_disp_inc_.mag();
+                    Double dil = 0.0;
+                    if (!s->state_) dil = tan_dilation_;
+                    else
+                    {
+                        // if residual dilation is zero, take peak value
+                        //     Double resdileff = tan_res_dilation_;
+                        // Note: In CLJ1 in 3DEC, no residual dilation is defined
+                        Double resdileff = tan_dilation_;
+                        if (!resdileff) resdileff = tan_dilation_;
+                        dil = resdileff;
+                    }
+                    s->normal_force_ += kna * dil * dusm;
+                }
             }
-            s->normal_force_ += kna * dil * dusm;
-          }
-        } // dilation
-      } // fsm>fsmax
+        }
     } // if (!tenflg)
   }
 

@@ -1,0 +1,5 @@
+1. Validating test results
+2. Test the coupling mechanism. (Bora's proposal vs Lourenco's proposal).
+3. Compare the test model with many experimental tests.
+4. Granular medium interlocking in random polyhedral medium.
+5. Increase the dilation for smooth surface. and check the results again. 
