@@ -63,7 +63,9 @@ namespace jmodels
     tan_res_friction_(0),
     G_I(0),
     G_II(0),
-    soft_tension(0)
+    soft_tension(0),
+    dt(0),
+    ds(0)
   {
   }
 
@@ -94,7 +96,7 @@ namespace jmodels
   {
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II, soft-tension, cc");
+          L"tension-residual, G_I, G_II, soft-tension, cc,dt,ds");
   }
 
   String JModelYopi::getStates() const
@@ -120,6 +122,8 @@ namespace jmodels
     case 12: return G_II;
     case 13: return soft_tension;
     case 14: return cc;
+    case 15: return dt;
+    case 16: return ds;
     }
     return 0.0;
   }
@@ -167,6 +171,8 @@ namespace jmodels
     G_II = mm->G_II;
     soft_tension = mm->soft_tension;
     cc = mm->cc;
+    dt = mm->dt;
+    ds = mm->ds;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -177,6 +183,8 @@ namespace jmodels
     tan_dilation_    = tan(dilation_ * dDegRad);
     soft_tension = 0.0;
     cc = 0.0;
+    dt = 0.0;
+    ds = 0.0;
   }
 
   void JModelYopi::run(UByte dim,State *s)
@@ -191,6 +199,13 @@ namespace jmodels
 
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
+    
+    //Calculate max shear stress            
+    Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+    Double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
+    //Calculate ultimate(bound) displacement
+    Double u_ul = 2 * G_I / tension_;
+    Double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
 
     // normal force
     Double fn0 = s->normal_force_;
@@ -210,21 +225,27 @@ namespace jmodels
 
     // tensile strength
     Double ten;
-    //Calculate max shear stress            
-    Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+    
 
     //Define the softening tensile strength
     if (s->state_)
     {
+        if (s->normal_disp_ < u_ul)
+        {
+            dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
+        }
+        else if (s->normal_disp_ >= u_ul)
+        {
+            dt = 1;
+        }
         ////Exponential Softening
-        //Introduce k1 parameter;
-        Double k1_ = (s->normal_disp_ - (tension_ / kn_)) + G_I / G_II * cohesion_ / tension_ * (s->shear_disp_.mag() - (tmax / ks_));
-        soft_tension = tension_ * exp(-(tension_ / G_I * k1_));
-        ten = -soft_tension * s->area_;
+        ten = -tension_ * (1-dt) * s->area_;
     }
-    else
-        ten = -tension_ * s->area_;
-
+    else 
+    {
+        dt = 0;
+        ten = -tension_ * (1 - dt) * s->area_;
+    }
     // check tensile failure
     bool tenflag = false;
     Double f1;
@@ -254,13 +275,19 @@ namespace jmodels
         if (fsmax < 0.0) fsmax = 0.0;
         Double f2 = fsm - fsmax;
         if (s->state_) {
+            if (s->shear_disp_.mag() < u_uls)
+            {
+                ds = (s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_));
+            }
+            else if (s->shear_disp_.mag() >= u_uls)
+            {
+                ds = 1;
+            }
             Double resamueff = tan_res_friction_;
             if (!resamueff) resamueff = tan_friction_;
-            //Introduce K1 and K2 softening parameter
-            Double& tmax_2 = tmax;
-            Double k2_ = (s->shear_disp_.mag() - (tmax_2 / ks_)) + G_II / G_I * tension_ / cohesion_ * (s->normal_disp_ - (tension_ / kn_));
-            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * exp(-((cohesion_ / G_II) * k2_));
-            Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - (cohesion_ - cc) / (cohesion_ - res_cohesion_));
+            
+            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1-ds);
+            Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1-ds);
             Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
             fsmax = tc;
             f2 = fsm - tc;

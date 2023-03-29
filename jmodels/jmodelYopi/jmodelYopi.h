@@ -43,6 +43,8 @@ namespace jmodels
     Double G_I; //first mode fracture energy
     Double G_II; //Second mode fracture energy
     Double soft_tension; //Softening part of tensile strength
+    Double dt; // tensile damage parameter
+    Double ds; // shear damage parameter
     Double cc; //Softening part of shear strength
     Int    kn_tab_;
     Int    ks_tab_;
