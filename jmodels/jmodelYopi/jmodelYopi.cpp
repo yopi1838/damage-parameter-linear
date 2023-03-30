@@ -65,7 +65,8 @@ namespace jmodels
     G_II(0),
     soft_tension(0),
     dt(0),
-    ds(0)
+    ds(0),
+    d_ts(0)
   {
   }
 
@@ -96,7 +97,7 @@ namespace jmodels
   {
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II, soft-tension, cc,dt,ds");
+          L"tension-residual, G_I, G_II, soft-tension, cc,dt,ds,d_ts");
   }
 
   String JModelYopi::getStates() const
@@ -124,6 +125,7 @@ namespace jmodels
     case 14: return cc;
     case 15: return dt;
     case 16: return ds;
+    case 17: return d_ts;
     }
     return 0.0;
   }
@@ -173,6 +175,7 @@ namespace jmodels
     cc = mm->cc;
     dt = mm->dt;
     ds = mm->ds;
+    d_ts = mm->d_ts;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -239,12 +242,15 @@ namespace jmodels
             dt = 1;
         }
         ////Exponential Softening
-        ten = -tension_ * (1-dt) * s->area_;
+        d_ts = dt + ds - dt * ds;
+        ten = -tension_ * (1- d_ts) * s->area_;
     }
     else 
     {
         dt = 0;
-        ten = -tension_ * (1 - dt) * s->area_;
+        ds = 0;
+        d_ts = dt + ds - dt * ds;
+        ten = -tension_ * (1 - d_ts) * s->area_;
     }
     // check tensile failure
     bool tenflag = false;
@@ -272,25 +278,31 @@ namespace jmodels
         //Because the normal force is already in negative anyway, we don't have to change the signs
         Double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
         Double fsm = s->shear_force_.mag();
+        Double f2;
         if (fsmax < 0.0) fsmax = 0.0;
-        Double f2 = fsm - fsmax;
         if (s->state_) {
-            if (s->shear_disp_.mag() < u_uls)
+            if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax/ks_))
             {
                 ds = (s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_));
             }
             else if (s->shear_disp_.mag() >= u_uls)
             {
-                ds = 1;
+                ds = 1.0;
             }
+            else {
+                ds = 0.0;
+            }
+            d_ts = dt + ds - dt * ds;
             Double resamueff = tan_res_friction_;
             if (!resamueff) resamueff = tan_friction_;
-            
-            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1-ds);
-            Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1-ds);
+            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1- d_ts);
+            Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1- d_ts);
             Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
             fsmax = tc;
             f2 = fsm - tc;
+        }
+        else {
+            f2 = fsm - fsmax;
         }
         //Check if slip
         if (f2 >= 0.0) 
