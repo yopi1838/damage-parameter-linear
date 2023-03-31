@@ -63,7 +63,6 @@ namespace jmodels
     tan_res_friction_(0),
     G_I(0),
     G_II(0),
-    soft_tension(0),
     dt(0),
     ds(0),
     d_ts(0)
@@ -97,7 +96,7 @@ namespace jmodels
   {
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II, soft-tension, cc,dt,ds,d_ts");
+          L"tension-residual, G_I, G_II, soft-tension, cc,dt,ds,d_ts,tc");
   }
 
   String JModelYopi::getStates() const
@@ -121,7 +120,6 @@ namespace jmodels
     case 10: return res_tension_;
     case 11: return G_I;
     case 12: return G_II;
-    case 13: return soft_tension;
     case 14: return cc;
     case 15: return dt;
     case 16: return ds;
@@ -171,7 +169,6 @@ namespace jmodels
     tan_res_friction_ = mm->tan_res_friction_;
     G_I = mm->G_I;
     G_II = mm->G_II;
-    soft_tension = mm->soft_tension;
     cc = mm->cc;
     dt = mm->dt;
     ds = mm->ds;
@@ -184,7 +181,6 @@ namespace jmodels
     tan_friction_    = tan(friction_ * dDegRad);
     tan_res_friction_ = tan(res_friction_ * dDegRad);
     tan_dilation_    = tan(dilation_ * dDegRad);
-    soft_tension = 0.0;
     cc = 0.0;
     dt = 0.0;
     ds = 0.0;
@@ -202,13 +198,6 @@ namespace jmodels
 
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
-    
-    //Calculate max shear stress            
-    Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-    Double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
-    //Calculate ultimate(bound) displacement
-    Double u_ul = 2 * G_I / tension_;
-    Double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
 
     // normal force
     Double fn0 = s->normal_force_;
@@ -233,17 +222,24 @@ namespace jmodels
     //Define the softening tensile strength
     if (s->state_)
     {
-        if (s->normal_disp_ < u_ul)
-        {
-            dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
-        }
-        else if (s->normal_disp_ >= u_ul)
-        {
-            dt = 1;
+        //Calculate ultimate(bound) displacement
+        Double u_ul = 2 * G_I / tension_;
+        if (s->normal_disp_inc_ > 0.0) {
+            if (s->normal_disp_ < u_ul && s->normal_disp_ > (tension_ / kn_))
+            {
+                dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
+            }
+            else if (s->normal_disp_ >= u_ul)
+            {
+                dt = 1.0;
+            }
+            else {
+                dt = 0.0;
+            }
         }
         ////Exponential Softening
         d_ts = dt + ds - dt * ds;
-        ten = -tension_ * (1- d_ts) * s->area_;
+        ten = -tension_ * (1- d_ts + 1e-14) * s->area_;
     }
     else 
     {
@@ -275,12 +271,17 @@ namespace jmodels
     {
         s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
         s->shear_force_ += s->shear_force_inc_;
+        
         //Because the normal force is already in negative anyway, we don't have to change the signs
         Double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
         Double fsm = s->shear_force_.mag();
         Double f2;
         if (fsmax < 0.0) fsmax = 0.0;
         if (s->state_) {
+            //Calculate max shear stress            
+            Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+            Double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
+            Double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
             if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax/ks_))
             {
                 ds = (s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_));

@@ -45,6 +45,7 @@ namespace jmodels
     Double soft_tension; //Softening part of tensile strength
     Double dt; // tensile damage parameter
     Double ds; // shear damage parameter
+    Double d_ts;
     Double cc; //Softening part of shear strength
     Int    kn_tab_;
     Int    ks_tab_;
