@@ -224,18 +224,16 @@ namespace jmodels
     {
         //Calculate ultimate(bound) displacement
         Double u_ul = 2 * G_I / tension_;
-        if (s->normal_disp_inc_ > 0.0) {
-            if (s->normal_disp_ < u_ul && s->normal_disp_ > (tension_ / kn_))
-            {
-                dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
-            }
-            else if (s->normal_disp_ >= u_ul)
-            {
-                dt = 1.0;
-            }
-            else {
-                dt = 0.0;
-            }
+        if (s->normal_disp_ < u_ul && s->normal_disp_ > (tension_ / kn_))
+        {
+            dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
+        }
+        else if (s->normal_disp_ >= u_ul)
+        {
+            dt = 1.0;
+        }
+        else {
+            dt = 0.0;
         }
         ////Exponential Softening
         d_ts = dt + ds - dt * ds;
