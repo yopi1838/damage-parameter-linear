@@ -18,7 +18,7 @@
 #  pragma warning(disable:177)
 #  pragma warning(disable:280) // selector expression is constant
 #endif
-#include "base/fmt/format.h"
+#include "dependencies/interface/base/fmt/format.h"
 #pragma warning(pop)
 using wstring = std::wstring; // Old string class to avoid interface compatibility breaks
 using string = std::string; // Bring into global namespace like the other base types (uint32, etc)
