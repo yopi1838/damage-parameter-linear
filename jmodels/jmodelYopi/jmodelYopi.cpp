@@ -188,6 +188,9 @@ namespace jmodels
     tan_dilation_    = tan(dilation_ * dDegRad);
   }
 
+  static const UInt Dqs = 0;
+  static const UInt Dqt = 1;
+
   void JModelYopi::run(UByte dim,State *s)
   {
     JointModel::run(dim,s);
@@ -228,7 +231,9 @@ namespace jmodels
         Double u_ul = 2 * G_I / tension_;
         if (s->normal_disp_ < u_ul && s->normal_disp_ > (tension_ / kn_))
         {
-            dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
+            //dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
+            s->working_[Dqt] = std::max((s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_)), s->working_[Dqt]);
+            dt = s->working_[Dqt];
         }
         else if (s->normal_disp_ >= u_ul)
         {
@@ -284,7 +289,9 @@ namespace jmodels
             Double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
             if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax/ks_))
             {
-                ds = (s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_));
+                //ds = (s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_));
+                s->working_[Dqs] = std::max((s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_)), s->working_[Dqs]);
+                ds = s->working_[Dqs];
             }
             else if (s->shear_disp_.mag() >= u_uls)
             {
