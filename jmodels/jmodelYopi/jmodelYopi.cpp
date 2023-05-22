@@ -97,7 +97,7 @@ namespace jmodels
   {
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II, soft-tension, cc,dt,ds,d_ts");
+          L"tension-residual, G_I, G_II,dt,ds,d_ts,cc");
   }
 
   String JModelYopi::getStates() const
@@ -121,10 +121,10 @@ namespace jmodels
     case 10: return res_tension_;
     case 11: return G_I;
     case 12: return G_II;
-    case 14: return cc;
-    case 15: return dt;
-    case 16: return ds;
-    case 17: return d_ts;
+    case 13: return dt;
+    case 14: return ds;
+    case 15: return d_ts;
+    case 16: return cc;
     }
     return 0.0;
   }
@@ -174,10 +174,10 @@ namespace jmodels
     tan_res_friction_ = mm->tan_res_friction_;
     G_I = mm->G_I;
     G_II = mm->G_II;
-    cc = mm->cc;
     dt = mm->dt;
     ds = mm->ds;
     d_ts = mm->d_ts;
+    cc = mm->cc;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
