@@ -46,13 +46,11 @@ namespace jmodels
     Double ds; // shear damage parameter
     Double d_ts;
     Double cc; //Softening part of shear strength
-    String cTable_, fTable_, dTable_, tTable_;
+    String dtTable_, dsTable_;
     Double tP_ = 0.0; //plastic tensile displacement
     Double sP_ = 0.0; //plastic shear displacement
-    void  *iCohesion_ = nullptr;
-    void  *iFriction_ = nullptr;
-    void  *iDilation_ = nullptr;
-    void  *iTension_ = nullptr;
+    void  *iTension_d_ = nullptr;
+    void  *iShear_d_ = nullptr;
     Int    kn_tab_;
     Int    ks_tab_;
   };
