@@ -42,11 +42,17 @@ namespace jmodels
     Double tan_res_friction_;
     Double G_I; //first mode fracture energy
     Double G_II; //Second mode fracture energy
-    Double soft_tension; //Softening part of tensile strength
     Double dt; // tensile damage parameter
     Double ds; // shear damage parameter
     Double d_ts;
     Double cc; //Softening part of shear strength
+    String cTable_, fTable_, dTable_, tTable_;
+    Double tP_ = 0.0; //plastic tensile displacement
+    Double sP_ = 0.0; //plastic shear displacement
+    void  *iCohesion_ = nullptr;
+    void  *iFriction_ = nullptr;
+    void  *iDilation_ = nullptr;
+    void  *iTension_ = nullptr;
     Int    kn_tab_;
     Int    ks_tab_;
   };

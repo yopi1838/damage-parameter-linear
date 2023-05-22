@@ -50,6 +50,8 @@ namespace jmodels
   JModelYopi::JModelYopi() :
     kn_(0),
     ks_(0),
+    kn_tab_(0),
+    ks_tab_(0),
     cohesion_(0),
     friction_(0),
     dilation_(0),
@@ -97,7 +99,9 @@ namespace jmodels
   {
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II,dt,ds,d_ts,cc");
+          L"tension-residual, G_I, G_II,dt,ds,d_ts,cc,"
+          L"table-cohesion,table-friction,table-dilation,table-tension,"
+          L"tensile-disp-plastic,shear-disp-plastic");
   }
 
   String JModelYopi::getStates() const
@@ -125,6 +129,12 @@ namespace jmodels
     case 14: return ds;
     case 15: return d_ts;
     case 16: return cc;
+    case 17: return cTable_;
+    case 18: return fTable_;
+    case 19: return dTable_;
+    case 20: return tTable_;
+    case 21: return tP_;
+    case 22: return sP_;
     }
     return 0.0;
   }
@@ -150,6 +160,12 @@ namespace jmodels
     case 14: ds = prop.toDouble(); break;
     case 15: d_ts = prop.toDouble(); break;
     case 16: cc = prop.toDouble(); break;
+    case 17: cTable_ = prop.toString();  break;
+    case 18: fTable_ = prop.toString();  break;
+    case 19: dTable_ = prop.toString();  break;
+    case 20: tTable_ = prop.toString();  break;
+    case 21: tP_ = prop.toDouble(); break;
+    case 22: sP_ = prop.toDouble(); break;
     }
   }
 
@@ -178,6 +194,12 @@ namespace jmodels
     ds = mm->ds;
     d_ts = mm->d_ts;
     cc = mm->cc;
+    cTable_ = mm->cTable_;
+    fTable_ = mm->fTable_;
+    dTable_ = mm->dTable_;
+    tTable_ = mm->tTable_;
+    tP_ = mm->tP_;
+    sP_ = mm->sP_;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -186,8 +208,39 @@ namespace jmodels
     tan_friction_    = tan(friction_ * dDegRad);
     tan_res_friction_ = tan(res_friction_ * dDegRad);
     tan_dilation_    = tan(dilation_ * dDegRad);
+
+    //Initialize the null pointer
+    iCohesion_ = iFriction_ = iDilation_ = iTension_ = nullptr;
+    
+    //Get Table index for each material parameters
+    if (cTable_.length()) iCohesion_ = s->getTableIndexFromID(cTable_);
+    if (fTable_.length()) iFriction_ = s->getTableIndexFromID(fTable_);
+    if (dTable_.length()) iDilation_ = s->getTableIndexFromID(dTable_);
+    if (tTable_.length()) iTension_ = s->getTableIndexFromID(tTable_);
+
+    if (G_I && iTension_)
+        throw std::runtime_error("Internal error: either G_I or tTable_ can be defined, not both.");
+
+    if (G_II && iCohesion_)
+        throw std::runtime_error("Internal error: either G_II or cTable_ can be defined, not both.");
+  
+    if (!G_I) {
+        if (iTension_) tension_ = s->getYFromX(iTension_, tP_);
+    }
+    if (!G_II) {
+        if (iCohesion_) cohesion_ = s->getYFromX(iCohesion_, sP_);
+        if (iFriction_) friction_ = s->getYFromX(iFriction_, sP_);
+        if (iDilation_) dilation_ = s->getYFromX(iDilation_, sP_);
+    }
+
+    if (friction_) {
+        Double dApex = cohesion_ / tan_friction_;
+        tension_ = tension_ < dApex ? tension_ : dApex;
+    }
   }
 
+  static const UInt Dqs = 0;
+  static const UInt Dqt = 1;
   void JModelYopi::run(UByte dim,State *s)
   {
     JointModel::run(dim,s);
@@ -219,27 +272,33 @@ namespace jmodels
 
     // tensile strength
     Double ten;
-    
 
     //Define the softening tensile strength
     if (s->state_)
     {
-        //Calculate ultimate(bound) displacement
-        Double u_ul = 2 * G_I / tension_;
-        if (s->normal_disp_ < u_ul && s->normal_disp_ > (tension_ / kn_))
-        {
-            dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
-        }
-        else if (s->normal_disp_ >= u_ul)
-        {
-            dt = 1.0;
+        if (G_I) {
+            //if G_I is provided
+            //Calculate ultimate(bound) displacement
+            Double u_ul = 2 * G_I / tension_;
+            if (s->normal_disp_ < u_ul && s->normal_disp_ >(tension_ / kn_))
+            {
+                dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
+            }
+            else if (s->normal_disp_ >= u_ul)
+            {
+                dt = 1.0;
+            }
+            else {
+                dt = 0.0;
+            }
+            ////Exponential Softening
+            d_ts = dt + ds - dt * ds;
+            ten = -tension_ * (1 - d_ts + 1e-14) * s->area_;
         }
         else {
-            dt = 0.0;
+            //if tabular value is provided
+
         }
-        ////Exponential Softening
-        d_ts = dt + ds - dt * ds;
-        ten = -tension_ * (1- d_ts + 1e-14) * s->area_;
     }
     else 
     {
