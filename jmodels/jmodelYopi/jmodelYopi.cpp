@@ -68,7 +68,9 @@ namespace jmodels
     dt(0),
     ds(0),
     d_ts(0),
-    cc(0)
+    cc(0),
+    tP_(0),
+    sP_(0)
   {
   }
 
@@ -100,7 +102,7 @@ namespace jmodels
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
           L"tension-residual, G_I, G_II,dt,ds,d_ts,cc,"
-          L"table-damage-tension,table-damage-shear,"
+          L"table-dt,table-ds,"
           L"tensile-disp-plastic,shear-disp-plastic");
   }
 
@@ -131,8 +133,8 @@ namespace jmodels
     case 16: return cc;
     case 17: return dtTable_;
     case 18: return dsTable_;
-    case 21: return tP_;
-    case 22: return sP_;
+    case 19: return tP_;
+    case 20: return sP_;
     }
     return 0.0;
   }
@@ -160,8 +162,8 @@ namespace jmodels
     case 16: cc = prop.toDouble(); break;
     case 17: dtTable_ = prop.toString();  break;
     case 18: dsTable_ = prop.toString();  break;
-    case 21: tP_ = prop.toDouble(); break;
-    case 22: sP_ = prop.toDouble(); break;
+    case 19: tP_ = prop.toDouble(); break;
+    case 20: sP_ = prop.toDouble(); break;
     }
   }
 
@@ -210,23 +212,20 @@ namespace jmodels
     if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
     if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
 
+    tP_ = 0.0;
+    sP_ = 0.0;
+
     if (G_I && iTension_d_)
         throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
 
     if (G_II && iShear_d_)
         throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
-  
-    if (!G_I) {
-        if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-    }
-    if (!G_II) {
-        if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-
-    }
+    
   }
 
   static const UInt Dqs = 0;
   static const UInt Dqt = 1;
+
   void JModelYopi::run(UByte dim,State *s)
   {
     JointModel::run(dim,s);
@@ -239,6 +238,9 @@ namespace jmodels
 
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
+    Double uel = 0.0;
+
+    uel = tension_ / kn_;
 
     // normal force
     Double fn0 = s->normal_force_;
@@ -281,13 +283,14 @@ namespace jmodels
             d_ts = dt + ds - dt * ds;
             ten = -tension_ * (1 - d_ts + 1e-14) * s->area_;
         }
-        else {
+        else
+        {
+            //if table_dt is provided.
+            tP_ = (uel / s->normal_disp_)* -1;
             ////Exponential Softening
+            if(iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
             d_ts = dt + ds - dt * ds;
-            ten = -tension_ * (1 - d_ts + 1e-14) * s->area_;
-            //if tabular value is provided
-            s->working_[Dqt] += s->normal_disp_ - tension_ / kn_;
-            tP_ += s->working_[Dqt];
+            ten = -tension_ * ((1-d_ts) + 1e-14) * s->area_;
         }
     }
     else 
@@ -330,6 +333,7 @@ namespace jmodels
             //Calculate max shear stress            
             Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
             Double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
+            Double usel = (tmax / ks_);
             if (G_II) {
                 Double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
                 if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax / ks_))
@@ -352,18 +356,18 @@ namespace jmodels
                 fsmax = tc;
                 f2 = fsm - tc;
             }
-            else {
+            else
+            {
+                sP_ = usel / s->shear_disp_.mag();
+                if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
                 d_ts = dt + ds - dt * ds;
                 Double resamueff = tan_res_friction_;
                 if (!resamueff) resamueff = tan_friction_;
-                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
-                Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1-d_ts);
+                Double tan_friction_c = tan_friction_ + (tan_res_friction_ - tan_friction_) * (1 - d_ts);
                 Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                 fsmax = tc;
                 f2 = fsm - tc;
-                //if tabular value is provided
-                s->working_[Dqs] += s->shear_disp_.mag() - (tmax / ks_);
-                tP_ += s->working_[Dqt];
             }
             
         }
@@ -404,7 +408,6 @@ namespace jmodels
         }
     } // if (!tenflg)
   }
-
 } // namespace models
 
 
