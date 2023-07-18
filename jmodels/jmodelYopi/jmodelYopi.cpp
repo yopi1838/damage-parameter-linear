@@ -212,8 +212,8 @@ namespace jmodels
     if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
     if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
 
-    tP_ = 0.0;
-    sP_ = 0.0;
+    tP_ = 1.0;
+    sP_ = 1.0;
 
     if (G_I && iTension_d_)
         throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
@@ -268,7 +268,9 @@ namespace jmodels
             //if G_I is provided
             //Calculate ultimate(bound) displacement
             Double u_ul = 2 * G_I / tension_;
-            if (s->normal_disp_ < u_ul && s->normal_disp_ >(tension_ / kn_))
+            Double un_current = 0.0;
+            if (s->normal_disp_ > 0.0) un_current = s->normal_disp_;
+            if (un_current < u_ul && un_current > (tension_/ kn_))
             {
                 dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
             }
@@ -285,10 +287,17 @@ namespace jmodels
         }
         else
         {
-            //if table_dt is provided.
-            tP_ = (uel / s->normal_disp_)* -1;
-            ////Exponential Softening
-            if(iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+            if (s->normal_disp_> 0.0 && s->normal_disp_ > uel)
+            {
+                //if table_dt is provided.
+                tP_ = s->normal_disp_ / uel;
+                ////Exponential Softening
+                if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+            }
+            else 
+            {
+                dt = 0.0;
+            }
             d_ts = dt + ds - dt * ds;
             ten = -tension_ * ((1-d_ts) + 1e-14) * s->area_;
         }
@@ -358,8 +367,13 @@ namespace jmodels
             }
             else
             {
-                sP_ = usel / s->shear_disp_.mag();
-                if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+                if (s->shear_disp_.mag() >= usel) {
+                    sP_ = s->shear_disp_.mag() / usel;
+                    if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+                }
+                else {
+                    ds = 0.0;
+                }
                 d_ts = dt + ds - dt * ds;
                 Double resamueff = tan_res_friction_;
                 if (!resamueff) resamueff = tan_friction_;
