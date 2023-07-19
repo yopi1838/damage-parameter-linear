@@ -342,28 +342,44 @@ namespace jmodels
             //Calculate max shear stress            
             Double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
             Double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
-            Double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
-            if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax/ks_))
+            Double usel = tmax / ks_;
+            if (G_II) {
+                Double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
+                if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax / ks_))
+                {
+                    s->working_[Dqs] = std::max((s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_)), s->working_[Dqs]);
+                    ds = s->working_[Dqs];
+                }
+                else if (s->shear_disp_.mag() >= u_uls)
+                {
+                    ds = 1.0;
+                }
+                else {
+                    ds = 0.0;
+                }
+                d_ts = dt + ds - dt * ds;
+                Double resamueff = tan_res_friction_;
+                if (!resamueff) resamueff = tan_friction_;
+                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
+                Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+                Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+                fsmax = tc;
+                f2 = fsm - tc;
+            }
+            else 
             {
-                //ds = (s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_));
-                s->working_[Dqs] = std::max((s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_)), s->working_[Dqs]);
-                ds = s->working_[Dqs];
+               sP_ = s->shear_disp_.mag() / usel;
+               ////Exponential Softening
+               if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+               d_ts = dt + ds - dt * ds;
+               Double resamueff = tan_res_friction_;
+               if (!resamueff) resamueff = tan_friction_;
+               cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
+               Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+               Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+               fsmax = tc;
+               f2 = fsm - tc;
             }
-            else if (s->shear_disp_.mag() >= u_uls)
-            {
-                ds = 1.0;
-            }
-            else {
-                ds = 0.0;
-            }
-            d_ts = dt + ds - dt * ds;
-            Double resamueff = tan_res_friction_;
-            if (!resamueff) resamueff = tan_friction_;
-            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1- d_ts);
-            Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1- d_ts);
-            Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-            fsmax = tc;
-            f2 = fsm - tc;
         }
         else {
             f2 = fsm - fsmax;
