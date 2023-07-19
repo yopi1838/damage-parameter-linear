@@ -87,7 +87,7 @@
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">false</LinkIncremental>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">jmodelyopi007</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">cmodelexample007_debug</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">jmodelyopi007</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">jmodelyopi007_debug</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTestDebug|x64'">cmodelexampled007_debug</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -174,8 +174,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <LanguageStandard>
-      </LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <InterproceduralOptimization>SingleFile</InterproceduralOptimization>
       <OptimizeForWindowsApplication>true</OptimizeForWindowsApplication>
