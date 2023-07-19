@@ -287,7 +287,6 @@ namespace jmodels
         }
         else
         {
-<<<<<<< HEAD
             if (s->normal_disp_> 0.0 && s->normal_disp_ > uel)
             {
                 //if table_dt is provided.
@@ -301,11 +300,6 @@ namespace jmodels
             }
             d_ts = dt + ds - dt * ds;
             ten = -tension_ * ((1-d_ts) + 1e-14) * s->area_;
-=======
-            //dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
-            s->working_[Dqt] = std::max((s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_)), s->working_[Dqt]);
-            dt = s->working_[Dqt];
->>>>>>> master
         }
     }
     else 
@@ -373,7 +367,6 @@ namespace jmodels
             }
             else
             {
-<<<<<<< HEAD
                 if (s->shear_disp_.mag() >= usel) {
                     sP_ = s->shear_disp_.mag() / usel;
                     if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
@@ -389,13 +382,7 @@ namespace jmodels
                 Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                 fsmax = tc;
                 f2 = fsm - tc;
-=======
-                //ds = (s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_));
-                s->working_[Dqs] = std::max((s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_)), s->working_[Dqs]);
-                ds = s->working_[Dqs];
->>>>>>> master
             }
-            
         }
         else {
             f2 = fsm - fsmax;
