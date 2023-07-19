@@ -49,6 +49,11 @@ namespace jmodels
     Double cc; //Softening part of shear strength
     Int    kn_tab_;
     Int    ks_tab_;
+    Double sP_ = 0.0;
+    Double tP_ = 0.0;
+    String dtTable_, dsTable_;
+    void* iTension_d_ = nullptr;
+    void* iShear_d_ = nullptr;
   };
 } // namespace models
 
