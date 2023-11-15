@@ -46,6 +46,8 @@ namespace jmodels
   static const UInt tension_now  = 0x02;
   static const UInt slip_past    = 0x04;
   static const UInt tension_past = 0x08;
+  static const UInt comp_now = 0x16;
+  static const UInt comp_past = 0x32;
 
   JModelYopi::JModelYopi() :
     kn_(0),
@@ -53,6 +55,7 @@ namespace jmodels
     kn_tab_(0),
     ks_tab_(0),
     cohesion_(0),
+    compression_(0),
     friction_(0),
     dilation_(0),
     tension_(0),
@@ -65,8 +68,10 @@ namespace jmodels
     tan_res_friction_(0),
     G_I(0),
     G_II(0),
+    G_c(0),
     dt(0),
     ds(0),
+    dc(0),
     d_ts(0),
     cc(0),
     tP_(0),
@@ -99,16 +104,16 @@ namespace jmodels
 
   String JModelYopi::getProperties() const
   {
-      return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,friction   ,dilation   ,"
+      return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression,friction   ,dilation   ,"
           L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II,dt,ds,d_ts,cc,"
+          L"tension-residual, G_I, G_II,dt,ds,dc,d_ts,cc,"
           L"table-dt,table-ds,"
-          L"tensile-disp-plastic,shear-disp-plastic");
+          L"tensile-disp-plastic,shear-disp-plastic,G_c");
   }
 
   String JModelYopi::getStates() const
   {
-    return L"slip-n,tension-n,slip-p,tension-p";
+    return L"slip-n,tension-n,slip-p,tension-p,comp-n,comp-p";
   }
 
   Variant JModelYopi::getProperty(UInt index) const
@@ -118,23 +123,26 @@ namespace jmodels
     case 1:  return kn_;
     case 2:  return ks_;
     case 3:  return cohesion_;
-    case 4:  return friction_;
-    case 5:  return dilation_;
-    case 6:  return tension_;
-    case 7:  return zero_dilation_;
-    case 8:  return res_cohesion_;
-    case 9:  return res_friction_;
-    case 10: return res_tension_;
-    case 11: return G_I;
-    case 12: return G_II;
-    case 13: return dt;
-    case 14: return ds;
-    case 15: return d_ts;
-    case 16: return cc;
-    case 17: return dtTable_;
-    case 18: return dsTable_;
-    case 19: return tP_;
-    case 20: return sP_;
+    case 4:  return compression_;
+    case 5:  return friction_;
+    case 6:  return dilation_;
+    case 7:  return tension_;
+    case 8:  return zero_dilation_;
+    case 9:  return res_cohesion_;
+    case 10:  return res_friction_;
+    case 11: return res_tension_;
+    case 12: return G_I;
+    case 13: return G_II;
+    case 14: return dt;
+    case 15: return ds;
+    case 16: return dc;
+    case 17: return d_ts;
+    case 18: return cc;
+    case 19: return dtTable_;
+    case 20: return dsTable_;
+    case 21: return tP_;
+    case 22: return sP_;
+    case 23: return G_c;
     }
     return 0.0;
   }
@@ -147,23 +155,26 @@ namespace jmodels
     case 1: kn_ = prop.toDouble();  break;
     case 2: ks_ = prop.toDouble();  break;
     case 3: cohesion_ = prop.toDouble();  break;
-    case 4: friction_ = prop.toDouble();  break;
-    case 5: dilation_ = prop.toDouble();  break;
-    case 6: tension_ = prop.toDouble();  break;
-    case 7: zero_dilation_ = prop.toDouble();  break;
-    case 8: res_cohesion_ = prop.toDouble();  break;
-    case 9: res_friction_ = prop.toDouble();  break;
-    case 10: res_tension_ = prop.toDouble();  break;
-    case 11: G_I = prop.toDouble(); break;
-    case 12: G_II = prop.toDouble(); break;
-    case 13: dt = prop.toDouble(); break;
-    case 14: ds = prop.toDouble(); break;
-    case 15: d_ts = prop.toDouble(); break;
-    case 16: cc = prop.toDouble(); break;
-    case 17: dtTable_ = prop.toString();  break;
-    case 18: dsTable_ = prop.toString();  break;
-    case 19: tP_ = prop.toDouble(); break;
-    case 20: sP_ = prop.toDouble(); break;
+    case 4: compression_ = prop.toDouble(); break;
+    case 5: friction_ = prop.toDouble();  break;
+    case 6: dilation_ = prop.toDouble();  break;
+    case 7: tension_ = prop.toDouble();  break;
+    case 8: zero_dilation_ = prop.toDouble();  break;
+    case 9: res_cohesion_ = prop.toDouble();  break;
+    case 10: res_friction_ = prop.toDouble();  break;
+    case 11: res_tension_ = prop.toDouble();  break;
+    case 12: G_I = prop.toDouble(); break;
+    case 13: G_II = prop.toDouble(); break;
+    case 14: dt = prop.toDouble(); break;
+    case 15: ds = prop.toDouble(); break;
+    case 16: dc = prop.toDouble(); break;
+    case 17: d_ts = prop.toDouble(); break;
+    case 18: cc = prop.toDouble(); break;
+    case 19: dtTable_ = prop.toString();  break;
+    case 20: dsTable_ = prop.toString();  break;
+    case 21: tP_ = prop.toDouble(); break;
+    case 22: sP_ = prop.toDouble(); break;
+    case 23: G_c = prop.toDouble(); break;
     }
   }
 
@@ -176,6 +187,7 @@ namespace jmodels
     kn_ = mm->kn_;
     ks_ = mm->ks_;
     cohesion_ = mm->cohesion_;
+    compression_ = mm->compression_;
     friction_ = mm->friction_;
     dilation_ = mm->dilation_;
     tension_ = mm->tension_;
@@ -190,12 +202,14 @@ namespace jmodels
     G_II = mm->G_II;
     dt = mm->dt;
     ds = mm->ds;
+    dc = mm->dc;
     d_ts = mm->d_ts;
     cc = mm->cc;
     dtTable_ = mm->dtTable_;
     dsTable_ = mm->dsTable_;
     tP_ = mm->tP_;
     sP_ = mm->sP_;
+    G_c = mm->G_c;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)

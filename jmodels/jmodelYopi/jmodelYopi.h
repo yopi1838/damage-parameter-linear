@@ -30,6 +30,7 @@ namespace jmodels
     Double kn_;
     Double ks_;
     Double cohesion_;
+    Double compression_;
     Double friction_;
     Double dilation_;
     Double tension_;
@@ -42,7 +43,9 @@ namespace jmodels
     Double tan_res_friction_;
     Double G_I; //first mode fracture energy
     Double G_II; //Second mode fracture energy
+    Double G_c; //Compressive fracture energy
     Double dt = 0.0; // tensile damage parameter
+    Double dc = 0.0; // Compressive damage parameter
     Double ds = 0.0; // shear damage parameter
     Double d_ts;
     Double cc; //Softening part of shear strength
