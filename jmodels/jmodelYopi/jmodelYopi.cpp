@@ -249,12 +249,16 @@ namespace jmodels
     s->state_ &= ~slip_now;
     if (s->state_ & tension_now) s->state_ |= tension_past;
     s->state_ &= ~tension_now;
+    if (s->state_ & comp_now) s->state_ |= comp_past;
+    s->state_ &= ~comp_now;
 
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
     Double uel = 0.0;
+    Double ucel = 0.0; //Elastic displacement for the compression side
 
     uel = tension_ / kn_;
+    ucel = compression_ / kn_; //For now the stiffness is made the same.
 
     // normal force
     Double fn0 = s->normal_force_;
