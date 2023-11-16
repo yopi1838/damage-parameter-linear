@@ -46,8 +46,8 @@ namespace jmodels
   static const UInt tension_now  = 0x02;
   static const UInt slip_past    = 0x04;
   static const UInt tension_past = 0x08;
-  static const UInt comp_now = 0x16;
-  static const UInt comp_past = 0x32;
+  static const UInt comp_now = 0x10;
+  static const UInt comp_past = 0x20;
 
   JModelYopi::JModelYopi() :
     kn_(0),
@@ -278,6 +278,27 @@ namespace jmodels
 
     // tensile strength
     Double ten;
+    Double comp;
+
+    //Define the softening on compressive strength
+    if (s->state_) {
+        Double u_cul = 2 * G_c / compression_ * -1.0;
+        Double un_current = 0.0;
+        if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
+        if (un_current > u_cul && un_current < (-compression_/kn_)) {
+            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
+        }
+        else if (s->normal_disp_ <= u_cul) {
+            dc = 1.0;
+        }
+        else {
+            dc = 0.0;
+        }
+        comp = compression_ * ((1-dc) +1e-14) * s->area_;
+    }
+    else {
+        comp = compression_ * s->area_;
+    }
 
     //Define the softening tensile strength
     if (s->state_)
@@ -327,6 +348,26 @@ namespace jmodels
         d_ts = dt + ds - dt * ds;
         ten = -tension_ * (1 - d_ts) * s->area_;
     }
+
+    //Check compressive failure (assume compressive cut-off)
+    bool compflag = false;
+    Double f3;
+    f3 = comp - s->normal_force_;
+    //If it violates the yield criterion for compression
+    if (f3 <= 0.0)
+    {
+        s->normal_force_ = comp;
+        if (!s->normal_force_) {
+            s->shear_force_ = DVect3(0, 0, 0);
+            compflag = true; // complete compressive failure
+        }
+        s->state_ |= comp_now;
+        ds = 1.0;
+        dt = 1.0;
+        s->normal_force_inc_ = 0.0;
+        s->shear_force_inc_ = DVect3(0, 0, 0);
+    }
+
     // check tensile failure
     bool tenflag = false;
     Double f1;
@@ -346,7 +387,7 @@ namespace jmodels
     }
 
     // shear force
-    if (!tenflag)
+    if (!tenflag && !compflag)
     {
         s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
         s->shear_force_ += s->shear_force_inc_;
@@ -401,7 +442,7 @@ namespace jmodels
         }
         else {
             f2 = fsm - fsmax;
-        }
+        }// if (state)
         //Check if slip
         if (f2 >= 0.0) 
         {
@@ -431,9 +472,9 @@ namespace jmodels
                         dil = resdileff;
                     }
                     s->normal_force_ += kna * dil * dusm;
-                }
-            }
-        }
+                }// if (usm<zdd)
+            }// if (dilation_)
+        }// if (f2)
     } // if (!tenflg)
   }
 } // namespace models
