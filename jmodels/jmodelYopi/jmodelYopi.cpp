@@ -75,7 +75,10 @@ namespace jmodels
     d_ts(0),
     cc(0),
     tP_(0),
-    sP_(0)
+    sP_(0),
+    Cnn(0),
+    Css(0),
+    Cn(0)
   {
   }
 
@@ -104,11 +107,11 @@ namespace jmodels
 
   String JModelYopi::getProperties() const
   {
-      return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression,friction   ,dilation   ,"
-          L"tension   ,dilation-zero,cohesion-residual,friction-residual,"
-          L"tension-residual, G_I, G_II,dt,ds,dc,d_ts,cc,"
-          L"table-dt,table-ds,"
-          L"tensile-disp-plastic,shear-disp-plastic,G_c");
+      return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
+          L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  ,"
+          L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
+          L"table-dt    ,table-ds   ,"
+          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c    ,Cnn    ,Css    ,Cn ");
   }
 
   String JModelYopi::getStates() const
@@ -143,6 +146,9 @@ namespace jmodels
     case 21: return tP_;
     case 22: return sP_;
     case 23: return G_c;
+    case 24: return Cnn;
+    case 25: return Css;
+    case 26: return Cn;
     }
     return 0.0;
   }
@@ -175,6 +181,9 @@ namespace jmodels
     case 21: tP_ = prop.toDouble(); break;
     case 22: sP_ = prop.toDouble(); break;
     case 23: G_c = prop.toDouble(); break;
+    case 24: Cnn = prop.toDouble(); break;
+    case 25: Css = prop.toDouble(); break;
+    case 26: Cn = prop.toDouble(); break;
     }
   }
 
@@ -210,6 +219,9 @@ namespace jmodels
     tP_ = mm->tP_;
     sP_ = mm->sP_;
     G_c = mm->G_c;
+    Cnn = mm->Cnn;
+    Css = mm->Css;
+    Cn = mm->Cn;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -343,29 +355,7 @@ namespace jmodels
     }
     else 
     {
-        dt = 0;
-        ds = 0;
-        d_ts = dt + ds - dt * ds;
-        ten = -tension_ * (1 - d_ts) * s->area_;
-    }
-
-    //Check compressive failure (assume compressive cut-off)
-    bool compflag = false;
-    Double f3;
-    f3 = comp - s->normal_force_;
-    //If it violates the yield criterion for compression
-    if (f3 <= 0.0)
-    {
-        s->normal_force_ = comp;
-        if (!s->normal_force_) {
-            s->shear_force_ = DVect3(0, 0, 0);
-            compflag = true; // complete compressive failure
-        }
-        s->state_ |= comp_now;
-        ds = 1.0;
-        dt = 1.0;
-        s->normal_force_inc_ = 0.0;
-        s->shear_force_inc_ = DVect3(0, 0, 0);
+        ten = -tension_ * s->area_;
     }
 
     // check tensile failure
@@ -384,6 +374,27 @@ namespace jmodels
       s->state_ |= tension_now;
       s->normal_force_inc_ = 0;
       s->shear_force_inc_ = DVect3(0,0,0);
+    }
+
+    //Check compressive failure (compressive cap)
+    bool compflag = false;
+    if (s->normal_disp_ < 0.0) {
+        Double f3;
+        f3 = Cnn * pow(s->normal_force_ / s->area_, 2) + Css * pow(s->shear_force_.mag() / s->area_, 2) + Cn * s->normal_force_ / s->area_ - pow(comp,2);
+        //If it violates the yield criterion for compression
+        if (f3 >= 0.0)
+        {
+            s->normal_force_ = comp;
+            if (!s->normal_force_) {
+                s->shear_force_ = DVect3(0, 0, 0);
+                compflag = true;
+            }
+            s->state_ |= comp_now;
+            ds = 1.0;
+            dt = 1.0;
+            s->normal_force_inc_ = 0.0;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+        }
     }
 
     // shear force

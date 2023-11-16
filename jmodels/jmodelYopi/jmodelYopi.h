@@ -52,6 +52,9 @@ namespace jmodels
     String dtTable_, dsTable_; //damage parameter tables
     Double tP_; //plastic tensile displacement
     Double sP_; //plastic shear displacement
+    Double Cnn; //Cap user defined parameter in normal direction
+    Double Css; //Cap user defined parameter in shear direction
+    Double Cn; //Cap user defined parameter for center of ellipsis
     void* iTension_d_ = nullptr;
     void* iShear_d_ = nullptr;
     Int    kn_tab_;
