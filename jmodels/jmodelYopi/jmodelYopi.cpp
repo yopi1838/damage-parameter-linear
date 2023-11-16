@@ -384,6 +384,7 @@ namespace jmodels
         //If it violates the yield criterion for compression
         if (f3 >= 0.0)
         {
+            //You need to consider what to do with the force correction in the case of the violation for the yield criterion
             s->normal_force_ = comp;
             if (!s->normal_force_) {
                 s->shear_force_ = DVect3(0, 0, 0);
