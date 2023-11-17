@@ -21,6 +21,7 @@ namespace jmodels
     virtual void           copy(const JointModel *mod);
     virtual void           run(UByte dim,State *s); // If !isValid(dim) calls initialize(dim,s)
     virtual void           initialize(UByte dim,State *s); // calls setValid(dim)
+    virtual Double         solveQuadratic(Double ,Double, Double);
     // Optional 
     virtual Double         getStressStrengthRatio(const Double &,const DVect3 &) const { return 10.0; }
     virtual void           scaleProperties(const Double &,const std::vector<UInt> &) { throw std::runtime_error("Does not support property scaling"); }
@@ -59,6 +60,8 @@ namespace jmodels
     void* iShear_d_ = nullptr;
     Int    kn_tab_;
     Int    ks_tab_;
+    Double  R_yield;
+    Double  R_violates;
   };
 } // namespace models
 
