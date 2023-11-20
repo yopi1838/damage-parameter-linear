@@ -80,7 +80,8 @@ namespace jmodels
     Css(0),
     Cn(0),
     R_yield(0),
-    R_violates(0)
+    R_violates(0),
+    fc_current(0)
   {
   }
 
@@ -113,7 +114,7 @@ namespace jmodels
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds   ,"
-          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c    ,Cnn    ,Css    ,Cn , R_yield, R_violates");
+          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c    ,Cnn    ,Css    ,Cn , R_yield, R_violates,fc_current");
   }
 
   String JModelYopi::getStates() const
@@ -153,6 +154,7 @@ namespace jmodels
     case 26: return Cn;
     case 27: return R_yield;
     case 28: return R_violates;
+    case 29: return fc_current;
     }
     return 0.0;
   }
@@ -188,7 +190,6 @@ namespace jmodels
     case 24: Cnn = prop.toDouble(); break;
     case 25: Css = prop.toDouble(); break;
     case 26: Cn = prop.toDouble(); break;
-    case 27: R_yield = prop.toDouble(); break;
     }
   }
 
@@ -229,6 +230,7 @@ namespace jmodels
     Cn = mm->Cn;
     R_yield = mm->R_yield;
     R_violates = mm->R_violates;
+    fc_current = mm->fc_current;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -321,10 +323,12 @@ namespace jmodels
         else {
             dc = 0.0;
         }
-        comp = compression_ * ((1-dc) +1e-14);
+        comp = compression_ * ((1-dc) +1e-14)*s->area_;
+        fc_current = comp / s->area_;
     }
     else {
-        comp = compression_;
+        comp = compression_ * s->area_;
+        fc_current = comp / s->area_;
     }
 
     //Define the softening tensile strength
@@ -390,48 +394,7 @@ namespace jmodels
       s->normal_force_inc_ = 0;
       s->shear_force_inc_ = DVect3(0,0,0);
     }
-
-    //Check compressive failure (compressive cap)
     bool compflag = false;
-    if (s->normal_disp_ < 0.0) { //only check when joints are in compression
-        Double f3;
-        f3 = Cnn * pow(s->normal_force_ / s->area_, 2) + Css * pow(s->shear_force_.mag() / s->area_, 2) + Cn * s->normal_force_ / s->area_ - pow(comp,2);
-        //If it violates the yield criterion for compression
-        if (f3 >= 0.0)
-        {
-            s->state_ |= comp_now;
-            //Calculate the radial distance from point to the origin
-            Double gradient;
-            Double X_yield;
-            Double Y_yield;
-            Double x = (s->normal_force_ / s->area_); //normal force would be larger than the position of Cn
-            Double y = s->shear_force_.mag() / s->area_;
-            R_violates = sqrt(pow(x, 2) + pow(y, 2));
-            gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
-            //Find the intercept from the gradient at the yield surface
-            Double a = Cnn + Css * pow(gradient, 2);
-            Double b = Cn;
-            Double c = -pow(comp, 2);
-            X_yield = solveQuadratic(a, b, c);
-            Y_yield = gradient * X_yield;
-            R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
-            s->normal_force_ -= X_yield * s->area_;
-            if (!s->normal_force_) {
-                s->shear_force_ = DVect3(0, 0, 0);
-                compflag = true;
-            }
-            //Correct the normal and shear forces to the yield surface
-            s->shear_force_.rx() -= Y_yield * s->area_;
-            s->shear_force_.ry() -= Y_yield * s->area_;
-            s->shear_force_.rz() -= Y_yield * s->area_;
-            
-            ds = 1.0;
-            dt = 1.0;
-            s->normal_force_inc_ = 0.0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
-        }
-    }
-
     // shear force
     if (!tenflag && !compflag)
     {
@@ -522,6 +485,51 @@ namespace jmodels
             }// if (dilation_)
         }// if (f2)
     } // if (!tenflg)
+
+    //Check compressive failure (compressive cap)
+    if (s->normal_disp_ < 0.0) {
+        Double f3;
+        Double gradient;
+        Double X_yield;
+        Double Y_yield;
+        Double x;
+        Double ratc;
+        Double y;
+        Double a;
+        Double b;
+        Double c;
+        f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+        //If it violates the yield criterion for compression
+        if (f3 >= 0.0)
+        {
+            s->state_ |= comp_now;
+            //Calculate the radial distance from point to the origin
+            x = (s->normal_force_); //normal force would be larger than the position of Cn
+            y = s->shear_force_.mag();
+            R_violates = sqrt(pow(x, 2) + pow(y, 2));
+            gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
+            //Find the intercept from the gradient at the yield surface
+            a = Cnn + Css * pow(gradient, 2);
+            b = Cn;
+            c = -pow(comp, 2);
+            X_yield = solveQuadratic(a, b, c);
+            Y_yield = gradient * X_yield;
+            R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
+            s->normal_force_ = X_yield;
+            if (!s->normal_force_) {
+                s->shear_force_ = DVect3(0, 0, 0);
+                compflag = true;
+            }
+            //Correct the normal and shear forces to the yield surface
+            ratc = R_yield / R_violates;
+            s->shear_force_ *= ratc;
+            /*s->shear_force_.rx() -= Y_yield * s->area_;
+            s->shear_force_.ry() -= Y_yield * s->area_;
+            s->shear_force_.rz() -= Y_yield * s->area_;*/
+            s->normal_force_inc_ = 0.0;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+        }
+    }
   }
 } // namespace models
 

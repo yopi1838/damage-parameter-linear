@@ -62,6 +62,7 @@ namespace jmodels
     Int    ks_tab_;
     Double  R_yield;
     Double  R_violates;
+    Double fc_current;
   };
 } // namespace models
 
