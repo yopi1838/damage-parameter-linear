@@ -24,6 +24,7 @@ namespace jmodels
     virtual Double         solveQuadratic(Double ,Double, Double);
     virtual void           compCorrection(State* s, UInt *IPlasticity, Double &comp);
     virtual void           shearCorrection(State* s, UInt* IPlasticity, Double &fsm, Double &fsmax);
+    virtual void           tensionCorrection(State* s, UInt* IPlasticity, Double& ten);
     // Optional 
     virtual Double         getStressStrengthRatio(const Double &,const DVect3 &) const { return 10.0; }
     virtual void           scaleProperties(const Double &,const std::vector<UInt> &) { throw std::runtime_error("Does not support property scaling"); }

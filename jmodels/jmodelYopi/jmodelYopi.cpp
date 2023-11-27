@@ -240,6 +240,8 @@ namespace jmodels
     tan_res_friction_ = tan(res_friction_ * dDegRad);
     tan_dilation_    = tan(dilation_ * dDegRad);
 
+    fc_current = compression_ / s->area_;
+
     //Initialize the null pointer
     iTension_d_ = iShear_d_ = nullptr;
     
@@ -256,6 +258,12 @@ namespace jmodels
     if (G_II && iShear_d_)
         throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
     
+    if (!compression_) compression_ = 1e20;
+    if (!G_c) G_c = 1e20;
+    if (!Cn) Cn = 0.0;
+    if (!Cnn) Cnn = 1.0;
+    if (!Css) Css = 9.0;
+
   }
 
   static const UInt Dqs = 0;
@@ -385,15 +393,7 @@ namespace jmodels
     // Change the criterion to f1 criterion for tensile instead
     if (f1 <= 0) 
     {
-      s->normal_force_  = ten;
-      if (!s->normal_force_)
-      {
-        s->shear_force_ = DVect3(0,0,0);
-        tenflag = true; // complete tensile failure
-      }
-      s->state_ |= tension_now;
-      s->normal_force_inc_ = 0;
-      s->shear_force_inc_ = DVect3(0,0,0);
+        tensionCorrection(s, &IPlas, ten);
     }
     bool compflag = false;
     // shear force
@@ -457,21 +457,46 @@ namespace jmodels
         if (f2 >= 0.0) 
         {
             shearCorrection(s, &IPlas, fsm, fsmax);
+            if (s->normal_disp_ < 0.0) {
+               //Check f3
+               Double f3;
+               f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+               if (f3 >= 0.0) {
+                   compCorrection(s, &IPlas, comp);
+               }
+            }
         }// if (f2)
+        //Check compressive failure (compressive cap)
+        if (s->normal_disp_ < 0.0) {
+            Double f3;
+            f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+            //If it violates the yield criterion for compression
+            if (f3 >= 0.0)
+            {
+                compCorrection(s, &IPlas, comp);
+                if (f2 >= 0.0) {
+                    shearCorrection(s, &IPlas, fsm, fsmax);
+                }
+            }
+        }//s->normal_disp < 0.0
     } // if (!tenflg)
-    //Check compressive failure (compressive cap)
-    if (s->normal_disp_ < 0.0) {
-        Double f3;
-        f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-        //If it violates the yield criterion for compression
-        if (f3 >= 0.0)
-        {
-            compCorrection(s, &IPlas, comp);
-        }
-    }//s->normal_disp < 0.0
   }//run
 
-  void JModelYopi::shearCorrection(State* s, UInt* IPlasticity, Double& fsm, Double& fsmax) {
+  void JModelYopi::tensionCorrection(State* s, UInt* IPlasticity, Double& ten) {
+      bool tenflag = false;
+      if (IPlasticity) *IPlasticity = 1;
+      s->normal_force_ = ten;
+      if (!s->normal_force_)
+      {
+          s->shear_force_ = DVect3(0, 0, 0);
+          tenflag = true; // complete tensile failure
+      }
+      s->state_ |= tension_now;
+      s->normal_force_inc_ = 0;
+      s->shear_force_inc_ = DVect3(0, 0, 0);
+  }
+
+  void JModelYopi::shearCorrection(State *s, UInt *IPlasticity, Double& fsm, Double& fsmax) {
       if (IPlasticity) *IPlasticity = 2;
       Double rat = 0.0;
       if (fsm) rat = fsmax / fsm;
@@ -503,7 +528,7 @@ namespace jmodels
       }// if (dilation_)
   }
 
-  void JModelYopi::compCorrection(State* s, UInt *IPlasticity, Double &comp) {
+  void JModelYopi::compCorrection(State *s, UInt *IPlasticity, Double &comp) {
     if (IPlasticity) *IPlasticity = 3;
     Double gradient;
     Double X_yield;
