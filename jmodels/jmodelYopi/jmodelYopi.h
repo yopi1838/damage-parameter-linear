@@ -22,6 +22,8 @@ namespace jmodels
     virtual void           run(UByte dim,State *s); // If !isValid(dim) calls initialize(dim,s)
     virtual void           initialize(UByte dim,State *s); // calls setValid(dim)
     virtual Double         solveQuadratic(Double ,Double, Double);
+    virtual void           compCorrection(State* s, UInt *IPlasticity, Double &comp);
+    virtual void           shearCorrection(State* s, UInt* IPlasticity, Double &fsm, Double &fsmax);
     // Optional 
     virtual Double         getStressStrengthRatio(const Double &,const DVect3 &) const { return 10.0; }
     virtual void           scaleProperties(const Double &,const std::vector<UInt> &) { throw std::runtime_error("Does not support property scaling"); }

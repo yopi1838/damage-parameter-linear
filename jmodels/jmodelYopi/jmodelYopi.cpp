@@ -281,6 +281,7 @@ namespace jmodels
     s->state_ &= ~tension_now;
     if (s->state_ & comp_now) s->state_ |= comp_past;
     s->state_ &= ~comp_now;
+    UInt IPlas = 0;
 
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
@@ -455,81 +456,88 @@ namespace jmodels
         //Check if slip
         if (f2 >= 0.0) 
         {
-            Double rat = 0.0;
-            if (fsm) rat = fsmax / fsm;
-            s->shear_force_ *= rat;
-            s->state_ |= slip_now;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
-            // dilation
-            if (dilation_)
-            {
-                Double zdd = zero_dilation_;
-                Double usm = s->shear_disp_.mag();
-                if (!zdd) zdd = 1e20;
-                if (usm < zdd)
-                {
-                    Double dusm = s->shear_disp_inc_.mag();
-                    Double dil = 0.0;
-                    if (!s->state_) dil = tan_dilation_;
-                    else
-                    {
-                        // if residual dilation is zero, take peak value
-                        //     Double resdileff = tan_res_dilation_;
-                        // Note: In CLJ1 in 3DEC, no residual dilation is defined
-                        Double resdileff = tan_dilation_;
-                        if (!resdileff) resdileff = tan_dilation_;
-                        dil = resdileff;
-                    }
-                    s->normal_force_ += kna * dil * dusm;
-                }// if (usm<zdd)
-            }// if (dilation_)
+            shearCorrection(s, &IPlas, fsm, fsmax);
         }// if (f2)
     } // if (!tenflg)
-
     //Check compressive failure (compressive cap)
     if (s->normal_disp_ < 0.0) {
         Double f3;
-        Double gradient;
-        Double X_yield;
-        Double Y_yield;
-        Double x;
-        Double ratc;
-        Double y;
-        Double a;
-        Double b;
-        Double c;
         f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
         //If it violates the yield criterion for compression
         if (f3 >= 0.0)
         {
-            s->state_ |= comp_now;
-            //Calculate the radial distance from point to the origin
-            x = (s->normal_force_); //normal force would be larger than the position of Cn
-            y = s->shear_force_.mag();
-            R_violates = sqrt(pow(x, 2) + pow(y, 2));
-            gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
-            //Find the intercept from the gradient at the yield surface
-            a = Cnn + Css * pow(gradient, 2);
-            b = Cn;
-            c = -pow(comp, 2);
-            X_yield = solveQuadratic(a, b, c);
-            Y_yield = gradient * X_yield;
-            R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
-            s->normal_force_ = X_yield;
-            if (!s->normal_force_) {
-                s->shear_force_ = DVect3(0, 0, 0);
-                compflag = true;
-            }
-            //Correct the normal and shear forces to the yield surface
-            ratc = R_yield / R_violates;
-            s->shear_force_ *= ratc;
-            /*s->shear_force_.rx() -= Y_yield * s->area_;
-            s->shear_force_.ry() -= Y_yield * s->area_;
-            s->shear_force_.rz() -= Y_yield * s->area_;*/
-            s->normal_force_inc_ = 0.0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
+            compCorrection(s, &IPlas, comp);
         }
+    }//s->normal_disp < 0.0
+  }//run
+
+  void JModelYopi::shearCorrection(State* s, UInt* IPlasticity, Double& fsm, Double& fsmax) {
+      if (IPlasticity) *IPlasticity = 2;
+      Double rat = 0.0;
+      if (fsm) rat = fsmax / fsm;
+      s->shear_force_ *= rat;
+      s->state_ |= slip_now;
+      s->shear_force_inc_ = DVect3(0, 0, 0);
+      // dilation
+      if (dilation_)
+      {
+          Double zdd = zero_dilation_;
+          Double usm = s->shear_disp_.mag();
+          if (!zdd) zdd = 1e20;
+          if (usm < zdd)
+          {
+              Double dusm = s->shear_disp_inc_.mag();
+              Double dil = 0.0;
+              if (!s->state_) dil = tan_dilation_;
+              else
+              {
+                  // if residual dilation is zero, take peak value
+                  //     Double resdileff = tan_res_dilation_;
+                  // Note: In CLJ1 in 3DEC, no residual dilation is defined
+                  Double resdileff = tan_dilation_;
+                  if (!resdileff) resdileff = tan_dilation_;
+                  dil = resdileff;
+              }
+              s->normal_force_ += kn_ * s->area_ * dil * dusm;
+          }// if (usm<zdd)
+      }// if (dilation_)
+  }
+
+  void JModelYopi::compCorrection(State* s, UInt *IPlasticity, Double &comp) {
+    if (IPlasticity) *IPlasticity = 3;
+    Double gradient;
+    Double X_yield;
+    Double Y_yield;
+    Double x;
+    Double ratc;
+    Double y;
+    Double a;
+    Double b;
+    Double c;
+    bool compFlag = false;
+    s->state_ |= comp_now;
+    //Calculate the radial distance from point to the origin
+    x = (s->normal_force_); //normal force would be larger than the position of Cn
+    y = s->shear_force_.mag();
+    R_violates = sqrt(pow(x, 2) + pow(y, 2));
+    gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
+    //Find the intercept from the gradient at the yield surface
+    a = Cnn + Css * pow(gradient, 2);
+    b = Cn;
+    c = -pow(comp, 2);
+    X_yield = solveQuadratic(a, b, c);
+    Y_yield = gradient * X_yield;
+    R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
+    s->normal_force_ = X_yield;
+    if (!s->normal_force_) {
+        s->shear_force_ = DVect3(0, 0, 0);
+        compFlag = true;
     }
+    //Correct the normal and shear forces to the yield surface
+    ratc = R_yield / R_violates;
+    s->shear_force_ *= ratc;
+    s->normal_force_inc_ = 0.0;
+    s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 } // namespace models
 
