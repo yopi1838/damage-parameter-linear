@@ -114,12 +114,12 @@ namespace jmodels
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds   ,"
-          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c    ,Cnn    ,Css    ,Cn , R_yield, R_violates,fc_current");
+          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c , Cn,Cnn,Css, R_yield, R_violates,fc_current");
   }
 
   String JModelYopi::getStates() const
   {
-    return L"slip-n,tension-n,slip-p,tension-p,comp-n,comp-p";
+    return L"slip-n,tension-n,slip-p,tension-p,cap-n,cap-p";
   }
 
   Variant JModelYopi::getProperty(UInt index) const
@@ -149,9 +149,9 @@ namespace jmodels
     case 21: return tP_;
     case 22: return sP_;
     case 23: return G_c;
-    case 24: return Cnn;
-    case 25: return Css;
-    case 26: return Cn;
+    case 24: return Cn;
+    case 25: return Cnn;
+    case 26: return Css;
     case 27: return R_yield;
     case 28: return R_violates;
     case 29: return fc_current;
@@ -187,9 +187,6 @@ namespace jmodels
     case 21: tP_ = prop.toDouble(); break;
     case 22: sP_ = prop.toDouble(); break;
     case 23: G_c = prop.toDouble(); break;
-    case 24: Cnn = prop.toDouble(); break;
-    case 25: Css = prop.toDouble(); break;
-    case 26: Cn = prop.toDouble(); break;
     }
   }
 
@@ -225,9 +222,6 @@ namespace jmodels
     tP_ = mm->tP_;
     sP_ = mm->sP_;
     G_c = mm->G_c;
-    Cnn = mm->Cnn;
-    Css = mm->Css;
-    Cn = mm->Cn;
     R_yield = mm->R_yield;
     R_violates = mm->R_violates;
     fc_current = mm->fc_current;
@@ -240,7 +234,10 @@ namespace jmodels
     tan_res_friction_ = tan(res_friction_ * dDegRad);
     tan_dilation_    = tan(dilation_ * dDegRad);
 
-    fc_current = compression_ / s->area_;
+    //Initialize parameter for the compressive cap
+    fc_current = compression_;
+    R_yield = 0.0;
+    R_violates = 0.0;
 
     //Initialize the null pointer
     iTension_d_ = iShear_d_ = nullptr;
@@ -328,6 +325,9 @@ namespace jmodels
         }
         else if (s->normal_disp_ <= u_cul) {
             dc = 1.0;
+            ds = 1.0;
+            s->normal_force_inc_ = 0;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
         }
         else {
             dc = 0.0;
@@ -544,6 +544,7 @@ namespace jmodels
     //Calculate the radial distance from point to the origin
     x = (s->normal_force_); //normal force would be larger than the position of Cn
     y = s->shear_force_.mag();
+
     R_violates = sqrt(pow(x, 2) + pow(y, 2));
     gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
     //Find the intercept from the gradient at the yield surface
@@ -553,14 +554,22 @@ namespace jmodels
     X_yield = solveQuadratic(a, b, c);
     Y_yield = gradient * X_yield;
     R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
-    s->normal_force_ = X_yield;
+    //Correct the normal and shear forces to the yield surface
+    ratc = R_yield / R_violates;
     if (!s->normal_force_) {
         s->shear_force_ = DVect3(0, 0, 0);
         compFlag = true;
     }
-    //Correct the normal and shear forces to the yield surface
-    ratc = R_yield / R_violates;
-    s->shear_force_ *= ratc;
+    if (dc == 1.0) {
+        //Full brittle failure
+        s->normal_force_ = 0.0;
+        s->shear_force_ = DVect3(0.0, 0.0, 0.0);
+    }
+    else {
+        s->normal_force_ = X_yield;
+        //Is the implementation for the shear force correction correct in here?
+        s->shear_force_ *= Y_yield / y;
+    }
     s->normal_force_inc_ = 0.0;
     s->shear_force_inc_ = DVect3(0, 0, 0);
   }
