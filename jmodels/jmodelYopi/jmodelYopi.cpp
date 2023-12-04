@@ -294,7 +294,7 @@ namespace jmodels
     Double ucel = 0.0; //Elastic displacement for the compression side
 
     uel = tension_ / kn_;
-    ucel = compression_ / kn_; //For now the stiffness is made the same.
+    ucel = compression_ / kn_ * -1.0; //For now the stiffness is made the same.
     // normal force
     Double fn0 = s->normal_force_;
     s->normal_force_inc_ = -kna * s->normal_disp_inc_;
@@ -313,10 +313,38 @@ namespace jmodels
 
     // tensile strength
     Double ten;
-    Double comp;
-
+    Double comp = 0.0;
+    Double u_cul = 2 * G_c / compression_ * 1.0;
     //Define the softening on compressive strength
-    if (s->state_) {
+    //Let's try if the damage response is nonlinear
+    Double compLimit_1 = 0.0, compLimit_2 = 0.0, compLimit_3 = 0.0, compLimit_4 = 0.0;
+    compLimit_1 = compression_ * 1.0 / 3.0; //Elastic limit
+    compLimit_2 = compression_; //Peak force
+    compLimit_3 = compression_ * 0.5; //Residual force
+    compLimit_4 = 1e-14; //Compliance
+    if (s->normal_disp_ < 0.0) {
+        if (s->normal_disp_ > ucel/3.0) {
+            comp = compression_ * s->area_;
+            fc_current = s->normal_force_ / s->area_;
+        }
+        else if (s->normal_disp_ <= ucel / 3.0 && s->normal_disp_ > ucel) {
+            dc = std::sqrt((2 * s->normal_disp_ / ucel) - (pow(s->normal_disp_,2) / pow(ucel,2)));
+            comp = ((compLimit_1)+(compLimit_2 - compLimit_1) * (dc))*s->area_;
+            fc_current = comp / s->area_;
+        }
+        else if (s->state_ && s->normal_disp_ <= ucel && s->normal_disp_ > u_cul) {
+            dc = pow((s->normal_disp_ - (ucel)) / ((u_cul) - (ucel)), 2);
+            comp = ((compLimit_2)+(compLimit_3 - compLimit_2) * (1-dc)) * s->area_;
+            fc_current = comp / s->area_;
+        }
+        else if (s->state_ && s->normal_disp_ <= u_cul){
+            Double m = 2 * (compLimit_3 - compLimit_2) / ((u_cul) - (ucel));
+            dc = exp(m * (s->normal_disp_ - (u_cul)) / (compLimit_3 - compLimit_4));
+            comp = (compLimit_4 + (compLimit_3 - compLimit_4) * dc)*s->area_;
+            fc_current = comp/s->area_;
+        }
+    }
+    /*if (s->state_) {
         Double u_cul = 2 * G_c / compression_ * -1.0;
         Double un_current = 0.0;
         if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
@@ -338,7 +366,7 @@ namespace jmodels
     else {
         comp = compression_ * s->area_;
         fc_current = comp / s->area_;
-    }
+    }*/
 
     //Define the softening tensile strength
     if (s->state_)
