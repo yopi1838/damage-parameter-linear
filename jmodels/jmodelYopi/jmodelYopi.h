@@ -21,6 +21,10 @@ namespace jmodels
     virtual void           copy(const JointModel *mod);
     virtual void           run(UByte dim,State *s); // If !isValid(dim) calls initialize(dim,s)
     virtual void           initialize(UByte dim,State *s); // calls setValid(dim)
+    virtual Double         solveQuadratic(Double ,Double, Double);
+    virtual void           compCorrection(State* s, UInt *IPlasticity, Double &comp);
+    virtual void           shearCorrection(State* s, UInt* IPlasticity, Double &fsm, Double &fsmax);
+    virtual void           tensionCorrection(State* s, UInt* IPlasticity, Double& ten);
     // Optional 
     virtual Double         getStressStrengthRatio(const Double &,const DVect3 &) const { return 10.0; }
     virtual void           scaleProperties(const Double &,const std::vector<UInt> &) { throw std::runtime_error("Does not support property scaling"); }
@@ -30,6 +34,7 @@ namespace jmodels
     Double kn_;
     Double ks_;
     Double cohesion_;
+    Double compression_;
     Double friction_;
     Double dilation_;
     Double tension_;
@@ -42,17 +47,25 @@ namespace jmodels
     Double tan_res_friction_;
     Double G_I; //first mode fracture energy
     Double G_II; //Second mode fracture energy
+    Double G_c; //Compressive fracture energy
     Double dt = 0.0; // tensile damage parameter
+    Double dc = 0.0; // Compressive damage parameter
     Double ds = 0.0; // shear damage parameter
     Double d_ts;
     Double cc; //Softening part of shear strength
     String dtTable_, dsTable_; //damage parameter tables
     Double tP_; //plastic tensile displacement
     Double sP_; //plastic shear displacement
+    Double Cnn; //Cap user defined parameter in normal direction
+    Double Css; //Cap user defined parameter in shear direction
+    Double Cn; //Cap user defined parameter for center of ellipsis
     void* iTension_d_ = nullptr;
     void* iShear_d_ = nullptr;
     Int    kn_tab_;
     Int    ks_tab_;
+    Double  R_yield;
+    Double  R_violates;
+    Double fc_current;
   };
 } // namespace models
 
