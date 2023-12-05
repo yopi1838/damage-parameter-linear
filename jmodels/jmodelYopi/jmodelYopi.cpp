@@ -317,51 +317,33 @@ namespace jmodels
     Double comp = 0.0;
     Double u_cul = 2 * G_c / compression_ * -1.0;
     //Define the softening on compressive strength
-    if (s->normal_disp_ < 0.0) {
-        /*if (s->normal_disp_ < ( - compression_ / kn_ / 3.0) && s->normal_disp_ >= (-compression_ / kn_)) {
-            s->normal_force_inc_ = (-compression_ / 3 * s->area_) + ((-compression_ * s->area_) - (-compression_/3 * s->area_)) * std::sqrt((2 * s->normal_disp_ / ucel) - pow((s->normal_disp_ / ucel), 2));
+
+    /*if (s->normal_disp_ < 0.0) {
+        if (s->normal_disp_ < (-compression_ / kn_ / 3.0) && s->normal_disp_ >= (-compression_ / kn_)) {
+            s->normal_force_inc_ = (-compression_ / 3 * s->area_) + ((-compression_ * s->area_) - (-compression_ / 3 * s->area_)) * std::sqrt((2 * s->normal_disp_inc_ / ucel) - pow((s->normal_disp_inc_ / ucel), 2));
             s->normal_force_ += s->normal_force_inc_;
             dc = 0.0;
             fc_current = s->normal_force_ / s->area_;
             comp = compression_ * s->area_;
         }
-        else*/ if (s->state_ && s->normal_disp_ >= u_cul && s->normal_disp_ < (-compression_ / kn_)) {
-            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
-            comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
-            fc_current = comp / s->area_;
-        }
-        else if (s->state_ && s->normal_disp_ < u_cul){
-            dc = 1.0;
-            ds = 1.0;
-            s->normal_force_inc_ = 0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
-            comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
-            fc_current = comp / s->area_;
-        }
-    }
-    /*if (s->state_) {
-        Double u_cul = 2 * G_c / compression_ * -1.0;
-        Double un_current = 0.0;
-        if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
-        if (un_current > u_cul && un_current < (-compression_/kn_)) {
-            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
-        }
-        else if (s->normal_disp_ <= u_cul) {
-            dc = 1.0;
-            ds = 1.0;
-            s->normal_force_inc_ = 0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
-        }
         else {
-            dc = 0.0;
+            s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+            s->normal_force_ += s->normal_force_inc_;
         }
-        comp = compression_ * ((1-dc) +1e-14)*s->area_;
+    }*/
+    if (s->state_) {
+        if (s->normal_disp_ >= u_cul && s->normal_disp_ < (-compression_ / kn_)) {
+            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
+        }
+        else if (s->state_ && s->normal_disp_ < u_cul) {
+            dc = 1.0;
+            ds = 1.0;
+            s->normal_force_inc_ = 0;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+        }
+        comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
         fc_current = comp / s->area_;
     }
-    else {
-        comp = compression_ * s->area_;
-        fc_current = comp / s->area_;
-    }*/
 
     //Define the softening tensile strength
     if (s->state_)
