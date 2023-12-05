@@ -293,13 +293,39 @@ namespace jmodels
     Double ksa  = ks_ * s->area_;
     Double uel = 0.0;
     Double ucel = 0.0; //Elastic displacement for the compression side
-
-    uel = tension_ / kn_;
-    ucel = compression_ / kn_ * -1.0; //For now the stiffness is made the same.
+    Double u_cul = 0.0;
+    u_cul = 2 * G_c / compression_ * -1.0;
+    
     // normal force
     Double fn0 = s->normal_force_;
-    s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-    s->normal_force_ += s->normal_force_inc_;
+    Double dn = s->normal_disp_inc_ * -1.0;
+    
+
+    //Define the hardening part of the compressive strength here
+    if (!s->state_) {
+        if (dn < 0.0) {
+            s->normal_force_inc_ = kna * dn;
+            s->normal_force_ += s->normal_force_inc_;
+        }
+        else {
+            //Calculate elastic limit
+            Double uel_limit = compression_ / kn_ / 3.0;
+            Double fel_limit = compression_ / 3.0 * s->area_;
+            Double fpeak = compression_ * s->area_;
+            ucel = compression_ / kn_ * 1.0; //For now the stiffness is made the same.
+            if (s->normal_disp_ * (-1.0) <= uel_limit) {
+                s->normal_force_inc_ = kna * dn;
+                s->normal_force_ += s->normal_force_inc_;
+                fc_current = s->normal_force_ / s->area_;
+            }
+            else {
+                Double un_current = s->normal_disp_ * (-1.0);
+                s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel) - pow((un_current - uel_limit) / ucel, 2), 0.5);
+                s->normal_force_inc_ = 0.0;
+                fc_current = s->normal_force_ / s->area_;
+            }
+        }
+    }
 
     // correction for time step in which joint opens (or goes into tension)
     // s->dnop_ is part of s->normal_disp_inc_ at which separation or tension takes place
@@ -312,25 +338,11 @@ namespace jmodels
         if (s->dnop_ > s->normal_disp_inc_) s->dnop_ = s->normal_disp_inc_;
     }
 
-    // tensile strength
     Double ten;
-    Double comp = 0.0;
-    Double u_cul = 2 * G_c / compression_ * -1.0;
-    //Define the softening on compressive strength
+    Double comp;
+    uel = tension_ / kn_;
 
-    /*if (s->normal_disp_ < 0.0) {
-        if (s->normal_disp_ < (-compression_ / kn_ / 3.0) && s->normal_disp_ >= (-compression_ / kn_)) {
-            s->normal_force_inc_ = (-compression_ / 3 * s->area_) + ((-compression_ * s->area_) - (-compression_ / 3 * s->area_)) * std::sqrt((2 * s->normal_disp_inc_ / ucel) - pow((s->normal_disp_inc_ / ucel), 2));
-            s->normal_force_ += s->normal_force_inc_;
-            dc = 0.0;
-            fc_current = s->normal_force_ / s->area_;
-            comp = compression_ * s->area_;
-        }
-        else {
-            s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-            s->normal_force_ += s->normal_force_inc_;
-        }
-    }*/
+    //Define the softening on compressive strength
     if (s->state_) {
         if (s->normal_disp_ >= u_cul && s->normal_disp_ < (-compression_ / kn_)) {
             dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
@@ -343,6 +355,9 @@ namespace jmodels
         }
         comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
         fc_current = comp / s->area_;
+    }
+    else {
+        comp = compression_ * s->area_;
     }
 
     //Define the softening tensile strength
