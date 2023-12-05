@@ -113,7 +113,7 @@ namespace jmodels
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
-          L"table-dt    ,table-ds   ,"
+          L"table-dt    ,table-ds ,"
           L"tensile-disp-plastic    ,shear-disp-plastic ,G_c , Cn,Cnn,Css, R_yield, R_violates,fc_current");
   }
 
@@ -254,6 +254,7 @@ namespace jmodels
 
     if (G_II && iShear_d_)
         throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
+
     
     if (!compression_) compression_ = 1e20;
     if (!G_c) G_c = 1e20;
@@ -314,34 +315,28 @@ namespace jmodels
     // tensile strength
     Double ten;
     Double comp = 0.0;
-    Double u_cul = 2 * G_c / compression_ * 1.0;
+    Double u_cul = 2 * G_c / compression_ * -1.0;
     //Define the softening on compressive strength
-    //Let's try if the damage response is nonlinear
-    Double compLimit_1 = 0.0, compLimit_2 = 0.0, compLimit_3 = 0.0, compLimit_4 = 0.0;
-    compLimit_1 = compression_ * 1.0 / 3.0; //Elastic limit
-    compLimit_2 = compression_; //Peak force
-    compLimit_3 = compression_ * 0.5; //Residual force
-    compLimit_4 = 1e-14; //Compliance
     if (s->normal_disp_ < 0.0) {
-        if (s->normal_disp_ > ucel/3.0) {
-            comp = compression_ * s->area_;
+        /*if (s->normal_disp_ < ( - compression_ / kn_ / 3.0) && s->normal_disp_ >= (-compression_ / kn_)) {
+            s->normal_force_inc_ = (-compression_ / 3 * s->area_) + ((-compression_ * s->area_) - (-compression_/3 * s->area_)) * std::sqrt((2 * s->normal_disp_ / ucel) - pow((s->normal_disp_ / ucel), 2));
+            s->normal_force_ += s->normal_force_inc_;
+            dc = 0.0;
             fc_current = s->normal_force_ / s->area_;
+            comp = compression_ * s->area_;
         }
-        else if (s->normal_disp_ <= ucel / 3.0 && s->normal_disp_ > ucel) {
-            dc = std::sqrt((2 * s->normal_disp_ / ucel) - (pow(s->normal_disp_,2) / pow(ucel,2)));
-            comp = ((compLimit_1)+(compLimit_2 - compLimit_1) * (dc))*s->area_;
+        else*/ if (s->state_ && s->normal_disp_ >= u_cul && s->normal_disp_ < (-compression_ / kn_)) {
+            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
+            comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
             fc_current = comp / s->area_;
         }
-        else if (s->state_ && s->normal_disp_ <= ucel && s->normal_disp_ > u_cul) {
-            dc = pow((s->normal_disp_ - (ucel)) / ((u_cul) - (ucel)), 2);
-            comp = ((compLimit_2)+(compLimit_3 - compLimit_2) * (1-dc)) * s->area_;
+        else if (s->state_ && s->normal_disp_ < u_cul){
+            dc = 1.0;
+            ds = 1.0;
+            s->normal_force_inc_ = 0;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+            comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
             fc_current = comp / s->area_;
-        }
-        else if (s->state_ && s->normal_disp_ <= u_cul){
-            Double m = 2 * (compLimit_3 - compLimit_2) / ((u_cul) - (ucel));
-            dc = exp(m * (s->normal_disp_ - (u_cul)) / (compLimit_3 - compLimit_4));
-            comp = (compLimit_4 + (compLimit_3 - compLimit_4) * dc)*s->area_;
-            fc_current = comp/s->area_;
         }
     }
     /*if (s->state_) {
