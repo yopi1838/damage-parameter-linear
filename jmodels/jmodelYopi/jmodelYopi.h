@@ -66,6 +66,7 @@ namespace jmodels
     Double  R_yield;
     Double  R_violates;
     Double fc_current;
+    Double res_comp_;
   };
 } // namespace models
 

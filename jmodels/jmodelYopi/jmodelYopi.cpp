@@ -63,6 +63,7 @@ namespace jmodels
     res_cohesion_(0),
     res_friction_(0),
     res_tension_(0),
+    res_comp_(0),
     tan_friction_(0),
     tan_dilation_(0),
     tan_res_friction_(0),
@@ -111,10 +112,10 @@ namespace jmodels
   String JModelYopi::getProperties() const
   {
       return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
-          L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  ,"
+          L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  , comp-residual ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
-          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c , Cn,Cnn,Css, R_yield, R_violates,fc_current");
+          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c , Cn,Cnn,Css,fc_current");
   }
 
   String JModelYopi::getStates() const
@@ -136,25 +137,24 @@ namespace jmodels
     case 8:  return zero_dilation_;
     case 9:  return res_cohesion_;
     case 10:  return res_friction_;
-    case 11: return res_tension_;
-    case 12: return G_I;
-    case 13: return G_II;
-    case 14: return dt;
-    case 15: return ds;
-    case 16: return dc;
-    case 17: return d_ts;
-    case 18: return cc;
-    case 19: return dtTable_;
-    case 20: return dsTable_;
-    case 21: return tP_;
-    case 22: return sP_;
-    case 23: return G_c;
-    case 24: return Cn;
-    case 25: return Cnn;
-    case 26: return Css;
-    case 27: return R_yield;
-    case 28: return R_violates;
-    case 29: return fc_current;
+    case 11: return res_comp_;
+    case 12: return res_tension_;
+    case 13: return G_I;
+    case 14: return G_II;
+    case 15: return dt;
+    case 16: return ds;
+    case 17: return dc;
+    case 18: return d_ts;
+    case 19: return cc;
+    case 20: return dtTable_;
+    case 21: return dsTable_;
+    case 22: return tP_;
+    case 23: return sP_;
+    case 24: return G_c;
+    case 25: return Cn;
+    case 26: return Cnn;
+    case 27: return Css;
+    case 28: return fc_current;
     }
     return 0.0;
   }
@@ -174,19 +174,20 @@ namespace jmodels
     case 8: zero_dilation_ = prop.toDouble();  break;
     case 9: res_cohesion_ = prop.toDouble();  break;
     case 10: res_friction_ = prop.toDouble();  break;
-    case 11: res_tension_ = prop.toDouble();  break;
-    case 12: G_I = prop.toDouble(); break;
-    case 13: G_II = prop.toDouble(); break;
-    case 14: dt = prop.toDouble(); break;
-    case 15: ds = prop.toDouble(); break;
-    case 16: dc = prop.toDouble(); break;
-    case 17: d_ts = prop.toDouble(); break;
-    case 18: cc = prop.toDouble(); break;
-    case 19: dtTable_ = prop.toString();  break;
-    case 20: dsTable_ = prop.toString();  break;
-    case 21: tP_ = prop.toDouble(); break;
-    case 22: sP_ = prop.toDouble(); break;
-    case 23: G_c = prop.toDouble(); break;
+    case 11: res_comp_ = prop.toDouble(); break;
+    case 12: res_tension_ = prop.toDouble();  break;
+    case 13: G_I = prop.toDouble(); break;
+    case 14: G_II = prop.toDouble(); break;
+    case 15: dt = prop.toDouble(); break;
+    case 16: ds = prop.toDouble(); break;
+    case 17: dc = prop.toDouble(); break;
+    case 18: d_ts = prop.toDouble(); break;
+    case 19: cc = prop.toDouble(); break;
+    case 20: dtTable_ = prop.toString();  break;
+    case 21: dsTable_ = prop.toString();  break;
+    case 22: tP_ = prop.toDouble(); break;
+    case 23: sP_ = prop.toDouble(); break;
+    case 24: G_c = prop.toDouble(); break;
     }
   }
 
@@ -206,6 +207,7 @@ namespace jmodels
     zero_dilation_ = mm->zero_dilation_;
     res_cohesion_ = mm->res_cohesion_;
     res_friction_ = mm->res_friction_;
+    res_comp_ = mm->res_comp_;
     res_tension_ = mm->res_tension_;
     tan_friction_ = mm->tan_friction_;
     tan_dilation_ = mm->tan_dilation_;
@@ -222,8 +224,6 @@ namespace jmodels
     tP_ = mm->tP_;
     sP_ = mm->sP_;
     G_c = mm->G_c;
-    R_yield = mm->R_yield;
-    R_violates = mm->R_violates;
     fc_current = mm->fc_current;
   }
 
@@ -235,7 +235,7 @@ namespace jmodels
     tan_dilation_    = tan(dilation_ * dDegRad);
 
     //Initialize parameter for the compressive cap
-    fc_current = compression_;
+    fc_current = 0.0;
     R_yield = 0.0;
     R_violates = 0.0;
 
@@ -257,6 +257,7 @@ namespace jmodels
 
     
     if (!compression_) compression_ = 1e20;
+    if (!res_comp_) res_comp_ = 0.0;
     if (!G_c) G_c = 1e20;
     if (!Cn) Cn = 0.0;
     if (!Cnn) Cnn = 1.0;
@@ -294,12 +295,11 @@ namespace jmodels
     Double uel = 0.0;
     Double ucel = 0.0; //Elastic displacement for the compression side
     Double u_cul = 0.0;
-    u_cul = 2 * G_c / compression_ * -1.0;
     
     // normal force
     Double fn0 = s->normal_force_;
     Double dn = s->normal_disp_inc_ * -1.0;
-    
+    ucel = compression_ / kn_ * 1.0;
 
     //Define the hardening part of the compressive strength here
     if (!s->state_) {
@@ -312,7 +312,7 @@ namespace jmodels
             Double uel_limit = compression_ / kn_ / 3.0;
             Double fel_limit = compression_ / 3.0 * s->area_;
             Double fpeak = compression_ * s->area_;
-            ucel = compression_ / kn_ * 1.0; //For now the stiffness is made the same.
+            //For now the stiffness is made the same.
             if (s->normal_disp_ * (-1.0) <= uel_limit) {
                 s->normal_force_inc_ = kna * dn;
                 s->normal_force_ += s->normal_force_inc_;
@@ -340,15 +340,18 @@ namespace jmodels
 
     Double ten;
     Double comp;
-    uel = tension_ / kn_;
-
+    uel = tension_ / kn_; //elastic limit on tension
+    u_cul = 2 * G_c / compression_ * 1.0; // ultimate limit on compression
+    Double alpha = 3.0;
     //Define the softening on compressive strength
     if (s->state_) {
-        if (s->normal_disp_ >= u_cul && s->normal_disp_ < (-compression_ / kn_)) {
-            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
+        if (s->normal_disp_*(-1.0) <= u_cul && s->normal_disp_ * (-1.0) > ucel) {
+            Double un_current = s->normal_disp_ * (-1.0);
+            dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel) / u_cul),alpha-1) - (alpha-1) * pow(((un_current - ucel) / u_cul), alpha));
+            //dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
         }
-        else if (s->state_ && s->normal_disp_ < u_cul) {
-            dc = 1.0;
+        else if (s->normal_disp_ * (-1.0) > u_cul) {
+            dc = 1.0 - (res_comp_/compression_);
             ds = 1.0;
             s->normal_force_inc_ = 0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
