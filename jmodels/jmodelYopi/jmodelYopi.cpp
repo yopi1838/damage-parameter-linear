@@ -82,7 +82,8 @@ namespace jmodels
     Cn(0),
     R_yield(0),
     R_violates(0),
-    fc_current(0)
+    fc_current(0),
+    cHat_(0)
   {
   }
 
@@ -115,7 +116,8 @@ namespace jmodels
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  , comp-residual ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
-          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c , Cn,Cnn,Css,fc_current");
+          L"tensile-disp-plastic    ,shear-disp-plastic ,"
+          L"G_c, Cn, Cnn, Css, fc_current, hardTable, comp-inelastic");
   }
 
   String JModelYopi::getStates() const
@@ -155,6 +157,8 @@ namespace jmodels
     case 26: return Cnn;
     case 27: return Css;
     case 28: return fc_current;
+    case 29: return hardTable_;
+    case 30: return cHat_;
     }
     return 0.0;
   }
@@ -188,6 +192,8 @@ namespace jmodels
     case 22: tP_ = prop.toDouble(); break;
     case 23: sP_ = prop.toDouble(); break;
     case 24: G_c = prop.toDouble(); break;
+    case 25: hardTable_ = prop.toString(); break;
+    case 26: cHat_ = prop.toDouble(); break;
     }
   }
 
@@ -225,6 +231,8 @@ namespace jmodels
     sP_ = mm->sP_;
     G_c = mm->G_c;
     fc_current = mm->fc_current;
+    hardTable_ = mm->hardTable_;
+    cHat_ = mm->cHat_;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -240,12 +248,14 @@ namespace jmodels
     R_violates = 0.0;
 
     //Initialize the null pointer
-    iTension_d_ = iShear_d_ = nullptr;
+    iTension_d_ = iShear_d_ = iHard_d_ =  nullptr;
     
     //Get Table index for each material parameters
     if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
     if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
+    if (hardTable_.length()) iHard_d_ = s->getTableIndexFromID(hardTable_);
 
+    cHat_ = 0.0;
     tP_ = 1.0;
     sP_ = 1.0;
 
@@ -255,7 +265,6 @@ namespace jmodels
     if (G_II && iShear_d_)
         throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
 
-    
     if (!compression_) compression_ = 1e20;
     if (!res_comp_) res_comp_ = 0.0;
     if (!G_c) G_c = 1e20;
@@ -308,21 +317,30 @@ namespace jmodels
             s->normal_force_ += s->normal_force_inc_;
         }
         else {
-            //Calculate elastic limit
             Double uel_limit = compression_ / kn_ / 3.0;
-            Double fel_limit = compression_ / 3.0 * s->area_;
-            Double fpeak = compression_ * s->area_;
-            //For now the stiffness is made the same.
-            if (s->normal_disp_ * (-1.0) <= uel_limit) {
-                s->normal_force_inc_ = kna * dn;
-                s->normal_force_ += s->normal_force_inc_;
-                fc_current = s->normal_force_ / s->area_;
+            if (!iHard_d_) {
+                //Calculate elastic limit
+                Double fel_limit = compression_ / 3.0 * s->area_;
+                Double fpeak = compression_ * s->area_;
+                //For now the stiffness is made the same.
+                if (s->normal_disp_ * (-1.0) <= uel_limit) {
+                    s->normal_force_inc_ = kna * dn;
+                    s->normal_force_ += s->normal_force_inc_;
+                    fc_current = s->normal_force_ / s->area_;
+                }
+                else {
+                    Double un_current = s->normal_disp_ * (-1.0);
+                    s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel) - pow((un_current - uel_limit) / ucel, 2), 0.5);
+                    s->normal_force_inc_ = 0.0;
+                    fc_current = s->normal_force_ / s->area_;
+                }
             }
             else {
                 Double un_current = s->normal_disp_ * (-1.0);
-                s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel) - pow((un_current - uel_limit) / ucel, 2), 0.5);
-                s->normal_force_inc_ = 0.0;
-                fc_current = s->normal_force_ / s->area_;
+                cHat_ = un_current - uel_limit;
+                if (cHat_ < 0.0) {
+
+                }
             }
         }
     }
@@ -585,7 +603,7 @@ namespace jmodels
     }
     if (dc == 1.0) {
         //Full brittle failure
-        s->normal_force_ = 0.0;
+        s->normal_force_ = 1e-14;
         s->shear_force_ = DVect3(0.0, 0.0, 0.0);
     }
     else {
