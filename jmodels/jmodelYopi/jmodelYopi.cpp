@@ -339,8 +339,22 @@ namespace jmodels
                 Double un_current = s->normal_disp_ * (-1.0);
                 cHat_ = un_current - uel_limit;
                 if (cHat_ < 0.0) {
-
+                    //The force is still in the elastic limit
+                    s->normal_force_inc_ = kna * dn;
+                    s->normal_force_ += s->normal_force_inc_;
+                    fc_current = s->normal_force_ / s->area_;
                 }
+                else {
+                    //The force is beyond the elastic range
+                    //interpolate from the hardening table to get the current compressive force
+                    fc_current = s->getYFromX(iHard_d_, cHat_);
+                    if (fc_current <= compression_) {
+                        s->normal_force_ = fc_current * s->area_;
+                    }
+                    //convert the stress to the normal force
+                    s->normal_force_inc_ = 0.0;
+                }
+
             }
         }
     }
