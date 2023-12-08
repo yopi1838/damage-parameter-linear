@@ -80,10 +80,13 @@ namespace jmodels
     Cnn(0),
     Css(0),
     Cn(0),
+    ucel_(0),
+    ucul_(0),
     R_yield(0),
     R_violates(0),
     fc_current(0),
-    cHat_(0)
+    cHat_(0),
+    friction_current_(0)
   {
   }
 
@@ -117,7 +120,7 @@ namespace jmodels
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
           L"tensile-disp-plastic    ,shear-disp-plastic ,"
-          L"G_c, Cn, Cnn, Css, fc_current, hardTable, comp-inelastic");
+          L"G_c, Cn, Cnn, Css, ucel, ucul, fc_current, hardTable, comp-inelastic,fric_current");
   }
 
   String JModelYopi::getStates() const
@@ -156,9 +159,12 @@ namespace jmodels
     case 25: return Cn;
     case 26: return Cnn;
     case 27: return Css;
-    case 28: return fc_current;
-    case 29: return hardTable_;
-    case 30: return cHat_;
+    case 28: return ucel_;
+    case 29: return ucul_;
+    case 30: return fc_current;
+    case 31: return hardTable_;
+    case 32: return cHat_;
+    case 33: return friction_current_;
     }
     return 0.0;
   }
@@ -192,8 +198,15 @@ namespace jmodels
     case 22: tP_ = prop.toDouble(); break;
     case 23: sP_ = prop.toDouble(); break;
     case 24: G_c = prop.toDouble(); break;
-    case 25: hardTable_ = prop.toString(); break;
-    case 26: cHat_ = prop.toDouble(); break;
+    case 25: Cn = prop.toDouble(); break;
+    case 26: Cnn = prop.toDouble(); break;
+    case 27: Css = prop.toDouble(); break;
+    case 28: ucel_ = prop.toDouble(); break;
+    case 29: ucul_ = prop.toDouble(); break;
+    case 30: fc_current = prop.toDouble(); break;
+    case 31: hardTable_ = prop.toString(); break;
+    case 32: cHat_ = prop.toDouble(); break;
+    case 33: friction_current_ = prop.toDouble(); break;
     }
   }
 
@@ -233,6 +246,9 @@ namespace jmodels
     fc_current = mm->fc_current;
     hardTable_ = mm->hardTable_;
     cHat_ = mm->cHat_;
+    friction_current_ = mm->friction_current_;
+    ucel_ = mm->ucel_;
+    ucul_ = mm->ucul_;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -302,13 +318,10 @@ namespace jmodels
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
     Double uel = 0.0;
-    Double ucel = 0.0; //Elastic displacement for the compression side
-    Double u_cul = 0.0;
     
     // normal force
     Double fn0 = s->normal_force_;
     Double dn = s->normal_disp_inc_ * -1.0;
-    ucel = compression_ / kn_ * 1.0;
 
     //Define the hardening part of the compressive strength here
     if (!s->state_) {
@@ -318,7 +331,7 @@ namespace jmodels
         }
         else {
             Double uel_limit = compression_ / kn_ / 3.0;
-            if (!iHard_d_) {
+            if (hardTable_.empty()) {
                 //Calculate elastic limit
                 Double fel_limit = compression_ / 3.0 * s->area_;
                 Double fpeak = compression_ * s->area_;
@@ -330,7 +343,7 @@ namespace jmodels
                 }
                 else {
                     Double un_current = s->normal_disp_ * (-1.0);
-                    s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel) - pow((un_current - uel_limit) / ucel, 2), 0.5);
+                    s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
                     s->normal_force_inc_ = 0.0;
                     fc_current = s->normal_force_ / s->area_;
                 }
@@ -347,10 +360,9 @@ namespace jmodels
                 else {
                     //The force is beyond the elastic range
                     //interpolate from the hardening table to get the current compressive force
-                    fc_current = s->getYFromX(iHard_d_, cHat_);
-                    if (fc_current <= compression_) {
-                        s->normal_force_ = fc_current * s->area_;
-                    }
+                    if (iHard_d_) fc_current = s->getYFromX(iHard_d_, cHat_);
+                    if (fc_current < compression_) s->normal_force_ = fc_current * s->area_;
+                    else s->normal_force_inc_ = 0.0;
                     //convert the stress to the normal force
                     s->normal_force_inc_ = 0.0;
                 }
@@ -373,16 +385,15 @@ namespace jmodels
     Double ten;
     Double comp;
     uel = tension_ / kn_; //elastic limit on tension
-    u_cul = 2 * G_c / compression_ * 1.0; // ultimate limit on compression
     Double alpha = 3.0;
     //Define the softening on compressive strength
     if (s->state_) {
-        if (s->normal_disp_*(-1.0) <= u_cul && s->normal_disp_ * (-1.0) > ucel) {
+        if (s->normal_disp_*(-1.0) <= ucul_ && s->normal_disp_ * (-1.0) > ucel_) {
             Double un_current = s->normal_disp_ * (-1.0);
-            dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel) / u_cul),alpha-1) - (alpha-1) * pow(((un_current - ucel) / u_cul), alpha));
+            dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel_) / ucul_),alpha-1) - (alpha-1) * pow(((un_current - ucel_) / ucul_), alpha));
             //dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
         }
-        else if (s->normal_disp_ * (-1.0) > u_cul) {
+        else if (s->normal_disp_ * (-1.0) > ucul_) {
             dc = 1.0 - (res_comp_/compression_);
             ds = 1.0;
             s->normal_force_inc_ = 0;
@@ -486,6 +497,7 @@ namespace jmodels
                 if (!resamueff) resamueff = tan_friction_;
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
                 Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+                friction_current_ = atan(tan_friction_c) / dDegRad;
                 Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                 fsmax = tc;
                 f2 = fsm - tc;
@@ -500,6 +512,7 @@ namespace jmodels
                if (!resamueff) resamueff = tan_friction_;
                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
                Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+               friction_current_ = atan(tan_friction_c) / dDegRad;
                Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                fsmax = tc;
                f2 = fsm - tc;
@@ -507,6 +520,8 @@ namespace jmodels
         }
         else {
             f2 = fsm - fsmax;
+            cc = cohesion_;
+            friction_current_ = atan(tan_friction_) / dDegRad;
         }// if (state)
         //Check if slip
         if (f2 >= 0.0) 

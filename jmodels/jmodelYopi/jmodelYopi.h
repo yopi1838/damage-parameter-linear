@@ -70,6 +70,9 @@ namespace jmodels
     Double res_comp_;
     String hardTable_; //Tabular format for the hardening function
     Double cHat_; //inelastic compressive displacement
+    Double friction_current_; //Current friction angle
+    Double ucel_; //displacement at peak compression
+    Double ucul_; //displacement at residual compression
   };
 } // namespace models
 
