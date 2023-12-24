@@ -391,7 +391,7 @@ namespace jmodels
         if (s->normal_disp_*(-1.0) <= ucul_ && s->normal_disp_ * (-1.0) > ucel_) {
             Double un_current = s->normal_disp_ * (-1.0);
             dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel_) / ucul_),alpha-1) - (alpha-1) * pow(((un_current - ucel_) / ucul_), alpha));
-            //dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
+            //dc = (s->normal_disp_ - (-compression_ / kn_)) / (ucul_*(-1.0) - (-compression_ / kn_));
         }
         else if (s->normal_disp_ * (-1.0) > ucul_) {
             dc = 1.0 - (res_comp_/compression_);
@@ -611,6 +611,8 @@ namespace jmodels
     Double c;
     bool compFlag = false;
     s->state_ |= comp_now;
+    s->normal_force_inc_ = 0.0;
+    s->shear_force_inc_ = DVect3(0, 0, 0);
     //Calculate the radial distance from point to the origin
     x = (s->normal_force_); //normal force would be larger than the position of Cn
     y = s->shear_force_.mag();
@@ -637,11 +639,8 @@ namespace jmodels
     }
     else {
         s->normal_force_ = X_yield;
-        //Is the implementation for the shear force correction correct in here?
-        s->shear_force_ *= Y_yield / y;
+        s->shear_force_ *= ratc;
     }
-    s->normal_force_inc_ = 0.0;
-    s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 } // namespace models
 
