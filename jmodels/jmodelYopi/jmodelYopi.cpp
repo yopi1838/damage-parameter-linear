@@ -395,7 +395,6 @@ namespace jmodels
         }
         else if (s->normal_disp_ * (-1.0) > ucul_) {
             dc = 1.0 - (res_comp_/compression_);
-            ds = 1.0;
             s->normal_force_inc_ = 0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
         }
