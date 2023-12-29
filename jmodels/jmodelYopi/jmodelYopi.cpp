@@ -321,52 +321,31 @@ namespace jmodels
     
     // normal force
     Double fn0 = s->normal_force_;
-    Double dn = s->normal_disp_inc_ * -1.0;
-
+    //Double dn = s->normal_disp_inc_ * -1.0;
+   
     //Define the hardening part of the compressive strength here
     if (!s->state_) {
-        if (dn < 0.0) {
-            s->normal_force_inc_ = kna * dn;
+        if (s->normal_force_ < 0.0) {
+            //tension
+            s->normal_force_inc_ = -kna * s->normal_disp_inc_;
             s->normal_force_ += s->normal_force_inc_;
         }
         else {
             Double uel_limit = compression_ / kn_ / 3.0;
-            if (hardTable_.empty()) {
-                //Calculate elastic limit
-                Double fel_limit = compression_ / 3.0 * s->area_;
-                Double fpeak = compression_ * s->area_;
-                //For now the stiffness is made the same.
-                if (s->normal_disp_ * (-1.0) <= uel_limit) {
-                    s->normal_force_inc_ = kna * dn;
-                    s->normal_force_ += s->normal_force_inc_;
-                    fc_current = s->normal_force_ / s->area_;
-                }
-                else if (fc_current < compression_){
-                    Double un_current = s->normal_disp_ * (-1.0);
-                    s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
-                    s->normal_force_inc_ = 0.0;
-                    fc_current = s->normal_force_ / s->area_;
-                }
+            //Calculate elastic limit
+            Double fel_limit = compression_ / 3.0 * s->area_;
+            Double fpeak = compression_ * s->area_;
+            ////For now the stiffness is made the same.
+            if (s->normal_disp_ * (-1.0) <= uel_limit) {
+                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                s->normal_force_ += s->normal_force_inc_;
+                fc_current = s->normal_force_ / s->area_;
             }
-            else {
+            else{
                 Double un_current = s->normal_disp_ * (-1.0);
-                cHat_ = un_current - uel_limit;
-                if (cHat_ < 0.0) {
-                    //The force is still in the elastic limit
-                    s->normal_force_inc_ = kna * dn;
-                    s->normal_force_ += s->normal_force_inc_;
-                    fc_current = s->normal_force_ / s->area_;
-                }
-                else {
-                    //The force is beyond the elastic range
-                    //interpolate from the hardening table to get the current compressive force
-                    if (iHard_d_) fc_current = s->getYFromX(iHard_d_, cHat_);
-                    if (fc_current < compression_) s->normal_force_ = fc_current * s->area_;
-                    else s->normal_force_inc_ = 0.0;
-                    //convert the stress to the normal force
-                    s->normal_force_inc_ = 0.0;
-                }
-
+                s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
+                s->normal_force_inc_ = 0.0;
+                fc_current = s->normal_force_ / s->area_;
             }
         }
     }
@@ -626,6 +605,8 @@ namespace jmodels
     Double c;
     bool compFlag = false;
     s->state_ |= comp_now;
+    s->normal_force_inc_ = 0.0;
+    s->shear_force_inc_ = DVect3(0, 0, 0);
     //Calculate the radial distance from point to the origin
     x = (s->normal_force_); //normal force would be larger than the position of Cn
     y = s->shear_force_.mag();
@@ -652,10 +633,9 @@ namespace jmodels
     }
     else {
         s->normal_force_ = X_yield;
-        s->shear_force_ *= ratc;
+        s->shear_force_ *= Y_yield/y;
     }
-    s->normal_force_inc_ = 0.0;
-    s->shear_force_inc_ = DVect3(0, 0, 0);
+    
   }
 } // namespace models
 
