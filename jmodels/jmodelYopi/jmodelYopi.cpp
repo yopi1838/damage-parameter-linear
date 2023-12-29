@@ -341,7 +341,7 @@ namespace jmodels
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
                 }
-                else {
+                else if (fc_current < compression_){
                     Double un_current = s->normal_disp_ * (-1.0);
                     s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
                     s->normal_force_inc_ = 0.0;
@@ -626,8 +626,6 @@ namespace jmodels
     Double c;
     bool compFlag = false;
     s->state_ |= comp_now;
-    s->normal_force_inc_ = 0.0;
-    s->shear_force_inc_ = DVect3(0, 0, 0);
     //Calculate the radial distance from point to the origin
     x = (s->normal_force_); //normal force would be larger than the position of Cn
     y = s->shear_force_.mag();
@@ -656,6 +654,8 @@ namespace jmodels
         s->normal_force_ = X_yield;
         s->shear_force_ *= ratc;
     }
+    s->normal_force_inc_ = 0.0;
+    s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 } // namespace models
 
