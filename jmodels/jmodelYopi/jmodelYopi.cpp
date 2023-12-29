@@ -385,21 +385,37 @@ namespace jmodels
     Double ten;
     Double comp;
     uel = tension_ / kn_; //elastic limit on tension
-    Double alpha = 3.0;
+    //Double alpha = 3.0;
     //Define the softening on compressive strength
     if (s->state_) {
-        if (s->normal_disp_*(-1.0) <= ucul_ && s->normal_disp_ * (-1.0) > ucel_) {
-            Double un_current = s->normal_disp_ * (-1.0);
-            dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel_) / ucul_),alpha-1) - (alpha-1) * pow(((un_current - ucel_) / ucul_), alpha));
-            //dc = (s->normal_disp_ - (-compression_ / kn_)) / (ucul_*(-1.0) - (-compression_ / kn_));
+        Double un_current = 0.0;
+        if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
+        if (un_current > ucul_*(-1.0) && un_current < ucel_ * (-1.0)) {
+            dc = (s->normal_disp_ - (ucel_ * (-1.0))) / ((ucul_ * (-1.0)) - (ucel_ * (-1.0)));
         }
-        else if (s->normal_disp_ * (-1.0) > ucul_) {
-            dc = 1.0 - (res_comp_/compression_);
+        else if (s->normal_disp_ <= ucul_ * (-1.0)) {
+            dc = 1.0;
+            ds = 1.0;
             s->normal_force_inc_ = 0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
         }
+        else {
+            dc = 0.0;
+        }
         comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
         fc_current = comp / s->area_;
+        //if (s->normal_disp_*(-1.0) <= ucul_ && s->normal_disp_ * (-1.0) > ucel_) {
+        //    Double un_current = s->normal_disp_ * (-1.0);
+        //    dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel_) / ucul_),alpha-1) - (alpha-1) * pow(((un_current - ucel_) / ucul_), alpha));
+        //    //dc = (s->normal_disp_ - (-compression_ / kn_)) / (ucul_*(-1.0) - (-compression_ / kn_));
+        //}
+        //else if (s->normal_disp_ * (-1.0) > ucul_) {
+        //    dc = 1.0 - (res_comp_/compression_);
+        //    s->normal_force_inc_ = 0;
+        //    s->shear_force_inc_ = DVect3(0, 0, 0);
+        //}
+        //comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
+        //fc_current = comp / s->area_;
     }
     else {
         comp = compression_ * s->area_;
