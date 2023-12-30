@@ -324,30 +324,30 @@ namespace jmodels
     //Double dn = s->normal_disp_inc_ * -1.0;
    
     //Define the hardening part of the compressive strength here
-    if (!s->state_) {
-        if (s->normal_force_ < 0.0) {
-            //tension
+    if (s->normal_force_ < 0.0) {
+        //tension
+        s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+        s->normal_force_ += s->normal_force_inc_;
+    }
+    else {
+        Double uel_limit = compression_ / kn_ / 3.0;
+        Double un_current = s->normal_disp_ * (-1.0);
+        //Calculate elastic limit
+        Double fel_limit = compression_ / 3.0 * s->area_;
+        Double fpeak = compression_ * s->area_;
+        ////For now the stiffness is made the same.
+        if (un_current <= uel_limit) {
             s->normal_force_inc_ = -kna * s->normal_disp_inc_;
             s->normal_force_ += s->normal_force_inc_;
+            fc_current = s->normal_force_ / s->area_;
         }
-        else {
-            Double uel_limit = compression_ / kn_ / 3.0;
-            //Calculate elastic limit
-            Double fel_limit = compression_ / 3.0 * s->area_;
-            Double fpeak = compression_ * s->area_;
-            ////For now the stiffness is made the same.
-            if (s->normal_disp_ * (-1.0) <= uel_limit) {
-                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-                s->normal_force_ += s->normal_force_inc_;
-                fc_current = s->normal_force_ / s->area_;
-            }
-            else{
-                Double un_current = s->normal_disp_ * (-1.0);
-                s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
-                s->normal_force_inc_ = 0.0;
-                fc_current = s->normal_force_ / s->area_;
-            }
+        else{
+            s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (s->normal_disp_*(-1.0) - uel_limit) / ucel_) - pow((s->normal_disp_ * (-1.0) - uel_limit) / ucel_, 2), 0.5);
+            s->normal_force_inc_ = 0.0;
+            fc_current = s->normal_force_ / s->area_;
         }
+        /*s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+        s->normal_force_ += s->normal_force_inc_;*/
     }
 
     // correction for time step in which joint opens (or goes into tension)
