@@ -318,13 +318,12 @@ namespace jmodels
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
     Double uel = 0.0;
-    
     // normal force
     Double fn0 = s->normal_force_;
     //Double dn = s->normal_disp_inc_ * -1.0;
    
     //Define the hardening part of the compressive strength here
-    if (s->normal_force_ < 0.0) {
+    if (s->normal_disp_ > 0.0) {
         //tension
         s->normal_force_inc_ = -kna * s->normal_disp_inc_;
         s->normal_force_ += s->normal_force_inc_;
@@ -341,13 +340,15 @@ namespace jmodels
             s->normal_force_ += s->normal_force_inc_;
             fc_current = s->normal_force_ / s->area_;
         }
-        else{
-            s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (s->normal_disp_*(-1.0) - uel_limit) / ucel_) - pow((s->normal_disp_ * (-1.0) - uel_limit) / ucel_, 2), 0.5);
-            s->normal_force_inc_ = 0.0;
+        else if (!s->state_){
+            s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
             fc_current = s->normal_force_ / s->area_;
         }
-        /*s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-        s->normal_force_ += s->normal_force_inc_;*/
+        else {
+            s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+            s->normal_force_ += s->normal_force_inc_;
+        }
+        
     }
 
     // correction for time step in which joint opens (or goes into tension)
@@ -605,8 +606,6 @@ namespace jmodels
     Double c;
     bool compFlag = false;
     s->state_ |= comp_now;
-    s->normal_force_inc_ = 0.0;
-    s->shear_force_inc_ = DVect3(0, 0, 0);
     //Calculate the radial distance from point to the origin
     x = (s->normal_force_); //normal force would be larger than the position of Cn
     y = s->shear_force_.mag();
@@ -633,9 +632,10 @@ namespace jmodels
     }
     else {
         s->normal_force_ = X_yield;
-        s->shear_force_ *= Y_yield/y;
+        s->shear_force_ *= Y_yield / y;
     }
-    
+    s->normal_force_inc_ = 0.0;
+    s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 } // namespace models
 
