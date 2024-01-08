@@ -61,11 +61,18 @@ namespace jmodels
     Double Cn; //Cap user defined parameter for center of ellipsis
     void* iTension_d_ = nullptr;
     void* iShear_d_ = nullptr;
+    void* iHard_d_ = nullptr;
     Int    kn_tab_;
     Int    ks_tab_;
     Double  R_yield;
     Double  R_violates;
     Double fc_current;
+    Double res_comp_;
+    String hardTable_; //Tabular format for the hardening function
+    Double cHat_; //inelastic compressive displacement
+    Double friction_current_; //Current friction angle
+    Double ucel_; //displacement at peak compression
+    Double ucul_; //displacement at residual compression
   };
 } // namespace models
 
