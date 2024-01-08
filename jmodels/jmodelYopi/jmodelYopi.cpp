@@ -80,13 +80,12 @@ namespace jmodels
     Cnn(0),
     Css(0),
     Cn(0),
-    ucel_(0),
-    ucul_(0),
-    R_yield(0),
-    R_violates(0),
     fc_current(0),
-    cHat_(0),
-    friction_current_(0)
+    friction_current_(0),
+    m_(0),
+    n_(0),
+    R_violates(0),
+    R_yield(0)
   {
   }
 
@@ -120,7 +119,7 @@ namespace jmodels
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
           L"tensile-disp-plastic    ,shear-disp-plastic ,"
-          L"G_c, Cn, Cnn, Css, ucel, ucul, fc_current, hardTable, comp-inelastic,fric_current");
+          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   ult_ratio,  peak_ratio");
   }
 
   String JModelYopi::getStates() const
@@ -159,12 +158,10 @@ namespace jmodels
     case 25: return Cn;
     case 26: return Cnn;
     case 27: return Css;
-    case 28: return ucel_;
-    case 29: return ucul_;
-    case 30: return fc_current;
-    case 31: return hardTable_;
-    case 32: return cHat_;
-    case 33: return friction_current_;
+    case 28: return fc_current;
+    case 29: return friction_current_;
+    case 30: return m_;
+    case 31: return n_;
     }
     return 0.0;
   }
@@ -201,12 +198,10 @@ namespace jmodels
     case 25: Cn = prop.toDouble(); break;
     case 26: Cnn = prop.toDouble(); break;
     case 27: Css = prop.toDouble(); break;
-    case 28: ucel_ = prop.toDouble(); break;
-    case 29: ucul_ = prop.toDouble(); break;
-    case 30: fc_current = prop.toDouble(); break;
-    case 31: hardTable_ = prop.toString(); break;
-    case 32: cHat_ = prop.toDouble(); break;
-    case 33: friction_current_ = prop.toDouble(); break;
+    case 28: fc_current = prop.toDouble(); break;
+    case 29: friction_current_ = prop.toDouble(); break;
+    case 30: m_ = prop.toDouble(); break;
+    case 31: n_ = prop.toDouble(); break;
     }
   }
 
@@ -244,11 +239,9 @@ namespace jmodels
     sP_ = mm->sP_;
     G_c = mm->G_c;
     fc_current = mm->fc_current;
-    hardTable_ = mm->hardTable_;
-    cHat_ = mm->cHat_;
     friction_current_ = mm->friction_current_;
-    ucel_ = mm->ucel_;
-    ucul_ = mm->ucul_;
+    m_ = mm->m_;
+    n_ = mm->n_;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -269,11 +262,13 @@ namespace jmodels
     //Get Table index for each material parameters
     if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
     if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
-    if (hardTable_.length()) iHard_d_ = s->getTableIndexFromID(hardTable_);
 
-    cHat_ = 0.0;
     tP_ = 1.0;
     sP_ = 1.0;
+
+    if (!m_) m_ = 10.0;
+    if (!n_) n_ = 1.0;
+
 
     if (G_I && iTension_d_)
         throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
@@ -317,10 +312,13 @@ namespace jmodels
 
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
+    
     Double uel = 0.0;
+    Double ucel_ = n_ * compression_ / kn_;
+    Double ucul_ = m_ * ucel_;
+    
     // normal force
     Double fn0 = s->normal_force_;
-    //Double dn = s->normal_disp_inc_ * -1.0;
    
     //Define the hardening part of the compressive strength here
     if (s->normal_disp_ > 0.0) {
@@ -365,12 +363,12 @@ namespace jmodels
     Double ten;
     Double comp;
     uel = tension_ / kn_; //elastic limit on tension
-    //Double alpha = 3.0;
+    Double alpha = 3.0;
     //Define the softening on compressive strength
     if (s->state_) {
         Double un_current = 0.0;
         if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
-        if (un_current > ucul_*(-1.0) && un_current < ucel_ * (-1.0)) {
+        /*if (un_current > ucul_*(-1.0) && un_current < ucel_ * (-1.0)) {
             dc = (s->normal_disp_ - (ucel_ * (-1.0))) / ((ucul_ * (-1.0)) - (ucel_ * (-1.0)));
         }
         else if (s->normal_disp_ <= ucul_ * (-1.0)) {
@@ -383,19 +381,17 @@ namespace jmodels
             dc = 0.0;
         }
         comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
+        fc_current = comp / s->area_;*/
+        if ((un_current > ucul_ * (-1.0)) && (un_current < ucel_ * (-1.0))) {
+            dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel_*(-1.0)) / ucul_ * (-1.0)),alpha-1) - (alpha-1) * pow(((un_current - ucel_ * (-1.0)) / ucul_ * (-1.0)), alpha));
+        }
+        else if (un_current <= ucul_ * (-1.0)) {
+            dc = 1.0 - (res_comp_/compression_);
+            s->normal_force_inc_ = 0;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+        }
+        comp = compression_ * ((1 - dc)) * s->area_;
         fc_current = comp / s->area_;
-        //if (s->normal_disp_*(-1.0) <= ucul_ && s->normal_disp_ * (-1.0) > ucel_) {
-        //    Double un_current = s->normal_disp_ * (-1.0);
-        //    dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel_) / ucul_),alpha-1) - (alpha-1) * pow(((un_current - ucel_) / ucul_), alpha));
-        //    //dc = (s->normal_disp_ - (-compression_ / kn_)) / (ucul_*(-1.0) - (-compression_ / kn_));
-        //}
-        //else if (s->normal_disp_ * (-1.0) > ucul_) {
-        //    dc = 1.0 - (res_comp_/compression_);
-        //    s->normal_force_inc_ = 0;
-        //    s->shear_force_inc_ = DVect3(0, 0, 0);
-        //}
-        //comp = compression_ * ((1 - dc) + 1e-14) * s->area_;
-        //fc_current = comp / s->area_;
     }
     else {
         comp = compression_ * s->area_;
