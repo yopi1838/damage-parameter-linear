@@ -119,7 +119,7 @@ namespace jmodels
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
           L"tensile-disp-plastic    ,shear-disp-plastic ,"
-          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   ult_ratio,  peak_ratio");
+          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   ult_ratio, peak_ratio");
   }
 
   String JModelYopi::getStates() const
@@ -200,7 +200,6 @@ namespace jmodels
     case 27: Css = prop.toDouble(); break;
     case 28: fc_current = prop.toDouble(); break;
     case 29: friction_current_ = prop.toDouble(); break;
-    case 30: m_ = prop.toDouble(); break;
     case 31: n_ = prop.toDouble(); break;
     }
   }
@@ -265,8 +264,9 @@ namespace jmodels
 
     tP_ = 1.0;
     sP_ = 1.0;
-
-    if (!m_) m_ = 10.0;
+  
+    if (!G_c) 
+        throw std::runtime_error("Internal error: Please input compressive fracture energy.");
     if (!n_) n_ = 1.0;
 
 
@@ -278,7 +278,6 @@ namespace jmodels
 
     if (!compression_) compression_ = 1e20;
     if (!res_comp_) res_comp_ = 0.0;
-    if (!G_c) G_c = 1e20;
     if (!Cn) Cn = 0.0;
     if (!Cnn) Cnn = 1.0;
     if (!Css) Css = 9.0;
@@ -315,11 +314,11 @@ namespace jmodels
     
     Double uel = 0.0;
     Double ucel_ = n_ * compression_ / kn_;
-    Double ucul_ = m_ * ucel_;
     
     // normal force
     Double fn0 = s->normal_force_;
-   
+    Double uel_limit = compression_ / kn_ / 3.0;
+
     //Define the hardening part of the compressive strength here
     if (s->normal_disp_ > 0.0) {
         //tension
@@ -327,7 +326,7 @@ namespace jmodels
         s->normal_force_ += s->normal_force_inc_;
     }
     else {
-        Double uel_limit = compression_ / kn_ / 3.0;
+        
         Double un_current = s->normal_disp_ * (-1.0);
         //Calculate elastic limit
         Double fel_limit = compression_ / 3.0 * s->area_;
@@ -363,29 +362,30 @@ namespace jmodels
     Double ten;
     Double comp = 0.0;
     uel = tension_ / kn_; //elastic limit on tension
-    //Double alpha = 3.0;
+    Double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+    Double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+    Double kappa_ = ucel_ * compression_;
+    Double gamma_ = 2.0;
+    m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_ 
+            + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2+ gamma_) - 0.25 * beta_ * (2-3* gamma_));
+    Double ucul_ = m_ * ucel_;
     //Define the softening on compressive strength
     if (s->state_) {
         Double un_current = 0.0;
-        Double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
         if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
         if ((un_current < ucel_ * (-1.0)) && (un_current > ucul_ * (-1.0))) {
             dc = (1 - (mid_comp/compression_)) * pow((un_current - ucel_ * (-1.0)) / (ucul_ * (-1.0) - ucel_ * (-1.0)),2);
-            comp = compression_ * ((1 - dc)) * s->area_;
-            //dc = (1 - (res_comp_ / compression_)) * (alpha * pow(((un_current - ucel_*(-1.0)) / ucul_ * (-1.0)),alpha-1) - (alpha-1) * pow(((un_current - ucel_ * (-1.0)) / ucul_ * (-1.0)), alpha));
         }
         else if (un_current <= ucul_ * (-1.0)) {
             Double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-            Double dcTemp = (1 - (mid_comp / res_comp_)) * exp(alpha * (un_current*(-1.0) - ucul_) / (mid_comp - res_comp_));
-            dc = (1 + dcTemp);
-            comp = res_comp_ * (1 - dcTemp) * s->area_;
+            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current*(-1.0) - ucul_)/(mid_comp- res_comp_));
             s->normal_force_inc_ = 0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
         }
         else {
-            comp = compression_ * s->area_;
+            dc = 0.0;
         }
-        //comp = compression_ * ((1 - dc)) * s->area_;
+        comp = compression_ * ((1 - dc)) * s->area_;
         fc_current = comp / s->area_;
     }
     else {
