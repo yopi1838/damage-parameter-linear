@@ -4,9 +4,9 @@
 
 namespace jmodels
 {
-  class JModelYopi : public JointModel {
+  class JModelYopi_linSoft : public JointModel {
   public:
-    JModelYopi();
+    JModelYopi_linSoft();
     virtual String         getName() const;
     virtual String         getPluginName() const { return getName(); }
     virtual String         getFullName() const;
@@ -15,7 +15,7 @@ namespace jmodels
     virtual String         getStates() const;
     virtual Variant        getProperty(UInt index) const;
     virtual void           setProperty(UInt index,const Variant &p,UInt restoreVersion=0);
-    virtual JModelYopi *clone() const { return new JModelYopi(); }
+    virtual JModelYopi_linSoft  *clone() const { return new JModelYopi_linSoft(); }
     virtual Double         getMaxNormalStiffness() const { return kn_; }
     virtual Double         getMaxShearStiffness() const { return ks_; }
     virtual void           copy(const JointModel *mod);
