@@ -15,7 +15,7 @@ extern "C" __declspec(dllexport) const char *getName()
 #ifdef JMODELDEBUG
   return "jmodelyopid";
 #else
-  return "jmodelyopi";
+  return "jmodelyopi_linsoft";
 #endif
 }
 
@@ -31,7 +31,7 @@ extern "C" __declspec(dllexport) unsigned getMinorVersion()
 
 extern "C" __declspec(dllexport) void *createInstance() 
 {
-  jmodels::JModelYopi*m = new jmodels::JModelYopi();
+  jmodels::JModelYopi_linSoft*m = new jmodels::JModelYopi_linSoft();
   return (void *)m;
 }
 #endif
@@ -49,7 +49,7 @@ namespace jmodels
   static const UInt comp_now = 0x10;
   static const UInt comp_past = 0x20;
 
-  JModelYopi::JModelYopi() :
+  JModelYopi_linSoft::JModelYopi_linSoft() :
     kn_(0),
     kn_initial_(0),
     ks_(0),
@@ -92,30 +92,30 @@ namespace jmodels
   {
   }
 
-  String JModelYopi::getName() const
+  String JModelYopi_linSoft::getName() const
   { 
 #ifdef JMODELDEBUG
     return L"yopid";
 #else
-    return L"yopi";
+    return L"yopi_linsoft";
 #endif
   }
 
-  String JModelYopi::getFullName() const
+  String JModelYopi_linSoft::getFullName() const
   { 
 #ifdef JMODELDEBUG
     return L"Yopi Debug";
 #else
-    return L"Yopi"; 
+    return L"Yopi_linsoft"; 
 #endif
   }
 
-  UInt JModelYopi::getMinorVersion() const
+  UInt JModelYopi_linSoft::getMinorVersion() const
   {
     return UPDATE_VERSION;
   }
 
-  String JModelYopi::getProperties() const
+  String JModelYopi_linSoft::getProperties() const
   {
       return(L"stiffness-normal       ,stiffness-initial    ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  , comp-residual ,"
@@ -125,12 +125,12 @@ namespace jmodels
           L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp");
   }
 
-  String JModelYopi::getStates() const
+  String JModelYopi_linSoft::getStates() const
   {
     return L"slip-n,tension-n,slip-p,tension-p,cap-n,cap-p";
   }
 
-  Variant JModelYopi::getProperty(UInt index) const
+  Variant JModelYopi_linSoft::getProperty(UInt index) const
   {
     switch (index) 
     {
@@ -172,7 +172,7 @@ namespace jmodels
     return 0.0;
   }
 
-  void JModelYopi::setProperty(UInt index,const Variant &prop,UInt)
+  void JModelYopi_linSoft::setProperty(UInt index,const Variant &prop,UInt)
   {
     JointModel::setProperty(index,prop);
     switch (index) 
@@ -218,10 +218,10 @@ namespace jmodels
   static const UInt Dqkn = 2;
   static const UInt Dqc = 3;
 
-  void JModelYopi::copy(const JointModel *m)
+  void JModelYopi_linSoft::copy(const JointModel *m)
   {
     JointModel::copy(m);
-    const JModelYopi *mm = dynamic_cast<const JModelYopi*>(m);
+    const JModelYopi_linSoft*mm = dynamic_cast<const JModelYopi_linSoft*>(m);
     if (!mm) throw std::runtime_error("Internal error: constitutive model dynamic cast failed.");
     kn_ = mm->kn_;
     kn_initial_ = mm->kn_initial_;
@@ -259,7 +259,7 @@ namespace jmodels
     un_hist_comp = mm->un_hist_comp;
   }
 
-  void JModelYopi::initialize(UByte dim,State *s)
+  void JModelYopi_linSoft::initialize(UByte dim,State *s)
   {
     JointModel::initialize(dim,s);
     tan_friction_    = tan(friction_ * dDegRad);
@@ -301,7 +301,7 @@ namespace jmodels
 
   
 
-  Double JModelYopi::solveQuadratic(Double a, Double b, Double c) {
+  Double JModelYopi_linSoft::solveQuadratic(Double a, Double b, Double c) {
       Double x1;
       Double x2;
       x1 = (-b + sqrt(pow(b, 2) - 4 * a * c)) / (2 * a);
@@ -310,7 +310,7 @@ namespace jmodels
       else return x2;
   }
 
-  void JModelYopi::run(UByte dim,State *s)
+  void JModelYopi_linSoft::run(UByte dim,State *s)
   {
     JointModel::run(dim,s);
     /* --- state indicator:                                  */
@@ -617,7 +617,7 @@ namespace jmodels
     } // if (!tenflg)
   }//run
 
-  void JModelYopi::tensionCorrection(State* s, UInt* IPlasticity, Double& ten) {
+  void JModelYopi_linSoft::tensionCorrection(State* s, UInt* IPlasticity, Double& ten) {
       bool tenflag = false;
       if (IPlasticity) *IPlasticity = 1;
       s->normal_force_ = ten;
@@ -631,7 +631,7 @@ namespace jmodels
       s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 
-  void JModelYopi::shearCorrection(State *s, UInt *IPlasticity, Double& fsm, Double& fsmax) {
+  void JModelYopi_linSoft::shearCorrection(State *s, UInt *IPlasticity, Double& fsm, Double& fsmax) {
       if (IPlasticity) *IPlasticity = 2;
       Double rat = 0.0;
       if (fsm) rat = fsmax / fsm;
@@ -663,7 +663,7 @@ namespace jmodels
       }// if (dilation_)
   }
 
-  void JModelYopi::compCorrection(State *s, UInt *IPlasticity, Double &comp) {
+  void JModelYopi_linSoft::compCorrection(State *s, UInt *IPlasticity, Double &comp) {
     if (IPlasticity) *IPlasticity = 3;
     Double gradient;
     Double X_yield;
