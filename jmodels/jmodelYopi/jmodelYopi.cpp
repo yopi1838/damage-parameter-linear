@@ -15,7 +15,7 @@ extern "C" __declspec(dllexport) const char *getName()
 #ifdef JMODELDEBUG
   return "jmodelyopid";
 #else
-  return "jmodelyopi_linsoft";
+  return "jmodelyopi_noCap";
 #endif
 }
 
@@ -31,7 +31,7 @@ extern "C" __declspec(dllexport) unsigned getMinorVersion()
 
 extern "C" __declspec(dllexport) void *createInstance() 
 {
-  jmodels::JModelYopi_linSoft*m = new jmodels::JModelYopi_linSoft();
+  jmodels::JModelYopi_noCap*m = new jmodels::JModelYopi_noCap();
   return (void *)m;
 }
 #endif
@@ -49,13 +49,12 @@ namespace jmodels
   static const UInt comp_now = 0x10;
   static const UInt comp_past = 0x20;
 
-  JModelYopi_linSoft::JModelYopi_linSoft() :
+  JModelYopi_noCap::JModelYopi_noCap() :
     kn_(0),
     ks_(0),
     kn_tab_(0),
     ks_tab_(0),
     cohesion_(0),
-    compression_(0),
     friction_(0),
     dilation_(0),
     tension_(0),
@@ -68,98 +67,83 @@ namespace jmodels
     tan_res_friction_(0),
     G_I(0),
     G_II(0),
-    G_c(0),
     dt(0),
     ds(0),
     dc(0),
     d_ts(0),
     cc(0),
     tP_(0),
-    sP_(0),
-    Cnn(0),
-    Css(0),
-    Cn(0),
-    R_yield(0),
-    R_violates(0),
-    fc_current(0)
+    sP_(0)
   {
   }
 
-  String JModelYopi_linSoft::getName() const
+  String JModelYopi_noCap::getName() const
   { 
 #ifdef JMODELDEBUG
     return L"yopid";
 #else
-    return L"yopi_linsoft";
+    return L"yopi_noCap";
 #endif
   }
 
-  String JModelYopi_linSoft::getFullName() const
+  String JModelYopi_noCap::getFullName() const
   { 
 #ifdef JMODELDEBUG
     return L"Yopi Debug";
 #else
-    return L"Yopi_linsoft"; 
+    return L"Yopi_noCap"; 
 #endif
   }
 
-  UInt JModelYopi_linSoft::getMinorVersion() const
+  UInt JModelYopi_noCap::getMinorVersion() const
   {
     return UPDATE_VERSION;
   }
 
-  String JModelYopi_linSoft::getProperties() const
+  String JModelYopi_noCap::getProperties() const
   {
-      return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
+      return(L"stiffness-normal       ,stiffness-shear        ,cohesion  ,friction   ,dilation   ,"
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds   ,"
-          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c , Cn,Cnn,Css, R_yield, R_violates,fc_current");
+          L"tensile-disp-plastic    ,shear-disp-plastic");
   }
 
-  String JModelYopi_linSoft::getStates() const
+  String JModelYopi_noCap::getStates() const
   {
-    return L"slip-n,tension-n,slip-p,tension-p,cap-n,cap-p";
+    return L"slip-n,tension-n,slip-p,tension-p";
   }
 
-  Variant JModelYopi_linSoft::getProperty(UInt index) const
+  Variant JModelYopi_noCap::getProperty(UInt index) const
   {
     switch (index) 
     {
     case 1:  return kn_;
     case 2:  return ks_;
     case 3:  return cohesion_;
-    case 4:  return compression_;
-    case 5:  return friction_;
-    case 6:  return dilation_;
-    case 7:  return tension_;
-    case 8:  return zero_dilation_;
-    case 9:  return res_cohesion_;
-    case 10:  return res_friction_;
-    case 11: return res_tension_;
-    case 12: return G_I;
-    case 13: return G_II;
-    case 14: return dt;
-    case 15: return ds;
-    case 16: return dc;
-    case 17: return d_ts;
-    case 18: return cc;
-    case 19: return dtTable_;
-    case 20: return dsTable_;
-    case 21: return tP_;
-    case 22: return sP_;
-    case 23: return G_c;
-    case 24: return Cn;
-    case 25: return Cnn;
-    case 26: return Css;
-    case 27: return R_yield;
-    case 28: return R_violates;
-    case 29: return fc_current;
+    case 4:  return friction_;
+    case 5:  return dilation_;
+    case 6:  return tension_;
+    case 7:  return zero_dilation_;
+    case 8:  return res_cohesion_;
+    case 9:  return res_friction_;
+    case 10: return res_tension_;
+    case 11: return G_I;
+    case 12: return G_II;
+    case 13: return dt;
+    case 14: return ds;
+    case 15: return dc;
+    case 16: return d_ts;
+    case 17: return cc;
+    case 18: return dtTable_;
+    case 19: return dsTable_;
+    case 20: return tP_;
+    case 21: return sP_;
     }
     return 0.0;
   }
 
-  void JModelYopi_linSoft::setProperty(UInt index,const Variant &prop,UInt)
+  void JModelYopi_noCap::setProperty(UInt index,const Variant &prop,UInt)
   {
     JointModel::setProperty(index,prop);
     switch (index) 
@@ -167,39 +151,36 @@ namespace jmodels
     case 1: kn_ = prop.toDouble();  break;
     case 2: ks_ = prop.toDouble();  break;
     case 3: cohesion_ = prop.toDouble();  break;
-    case 4: compression_ = prop.toDouble(); break;
-    case 5: friction_ = prop.toDouble();  break;
-    case 6: dilation_ = prop.toDouble();  break;
-    case 7: tension_ = prop.toDouble();  break;
-    case 8: zero_dilation_ = prop.toDouble();  break;
-    case 9: res_cohesion_ = prop.toDouble();  break;
-    case 10: res_friction_ = prop.toDouble();  break;
-    case 11: res_tension_ = prop.toDouble();  break;
-    case 12: G_I = prop.toDouble(); break;
-    case 13: G_II = prop.toDouble(); break;
-    case 14: dt = prop.toDouble(); break;
-    case 15: ds = prop.toDouble(); break;
-    case 16: dc = prop.toDouble(); break;
-    case 17: d_ts = prop.toDouble(); break;
-    case 18: cc = prop.toDouble(); break;
-    case 19: dtTable_ = prop.toString();  break;
-    case 20: dsTable_ = prop.toString();  break;
-    case 21: tP_ = prop.toDouble(); break;
-    case 22: sP_ = prop.toDouble(); break;
-    case 23: G_c = prop.toDouble(); break;
+    case 4: friction_ = prop.toDouble();  break;
+    case 5: dilation_ = prop.toDouble();  break;
+    case 6: tension_ = prop.toDouble();  break;
+    case 7: zero_dilation_ = prop.toDouble();  break;
+    case 8: res_cohesion_ = prop.toDouble();  break;
+    case 9: res_friction_ = prop.toDouble();  break;
+    case 10: res_tension_ = prop.toDouble();  break;
+    case 11: G_I = prop.toDouble(); break;
+    case 12: G_II = prop.toDouble(); break;
+    case 13: dt = prop.toDouble(); break;
+    case 14: ds = prop.toDouble(); break;
+    case 15: dc = prop.toDouble(); break;
+    case 16: d_ts = prop.toDouble(); break;
+    case 17: cc = prop.toDouble(); break;
+    case 18: dtTable_ = prop.toString();  break;
+    case 19: dsTable_ = prop.toString();  break;
+    case 20: tP_ = prop.toDouble(); break;
+    case 21: sP_ = prop.toDouble(); break;
     }
   }
 
 
-  void JModelYopi_linSoft::copy(const JointModel *m)
+  void JModelYopi_noCap::copy(const JointModel *m)
   {
     JointModel::copy(m);
-    const JModelYopi_linSoft*mm = dynamic_cast<const JModelYopi_linSoft*>(m);
+    const JModelYopi_noCap*mm = dynamic_cast<const JModelYopi_noCap*>(m);
     if (!mm) throw std::runtime_error("Internal error: constitutive model dynamic cast failed.");
     kn_ = mm->kn_;
     ks_ = mm->ks_;
     cohesion_ = mm->cohesion_;
-    compression_ = mm->compression_;
     friction_ = mm->friction_;
     dilation_ = mm->dilation_;
     tension_ = mm->tension_;
@@ -221,23 +202,14 @@ namespace jmodels
     dsTable_ = mm->dsTable_;
     tP_ = mm->tP_;
     sP_ = mm->sP_;
-    G_c = mm->G_c;
-    R_yield = mm->R_yield;
-    R_violates = mm->R_violates;
-    fc_current = mm->fc_current;
   }
 
-  void JModelYopi_linSoft::initialize(UByte dim,State *s)
+  void JModelYopi_noCap::initialize(UByte dim,State *s)
   {
     JointModel::initialize(dim,s);
     tan_friction_    = tan(friction_ * dDegRad);
     tan_res_friction_ = tan(res_friction_ * dDegRad);
     tan_dilation_    = tan(dilation_ * dDegRad);
-
-    //Initialize parameter for the compressive cap
-    fc_current = compression_;
-    R_yield = 0.0;
-    R_violates = 0.0;
 
     //Initialize the null pointer
     iTension_d_ = iShear_d_ = nullptr;
@@ -254,19 +226,13 @@ namespace jmodels
 
     if (G_II && iShear_d_)
         throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
-    
-    if (!compression_) compression_ = 1e20;
-    if (!G_c) G_c = 1e20;
-    if (!Cn) Cn = 0.0;
-    if (!Cnn) Cnn = 1.0;
-    if (!Css) Css = 9.0;
 
   }
 
   static const UInt Dqs = 0;
   static const UInt Dqt = 1;
 
-  Double JModelYopi_linSoft::solveQuadratic(Double a, Double b, Double c) {
+  Double JModelYopi_noCap::solveQuadratic(Double a, Double b, Double c) {
       Double x1;
       Double x2;
       x1 = (-b + sqrt(pow(b, 2) - 4 * a * c)) / (2 * a);
@@ -275,7 +241,7 @@ namespace jmodels
       else return x2;
   }
 
-  void JModelYopi_linSoft::run(UByte dim,State *s)
+  void JModelYopi_noCap::run(UByte dim,State *s)
   {
     JointModel::run(dim,s);
     /* --- state indicator:                                  */
@@ -291,10 +257,8 @@ namespace jmodels
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
     Double uel = 0.0;
-    Double ucel = 0.0; //Elastic displacement for the compression side
 
     uel = tension_ / kn_;
-    ucel = compression_ / kn_; //For now the stiffness is made the same.
     // normal force
     Double fn0 = s->normal_force_;
     s->normal_force_inc_ = -kna * s->normal_disp_inc_;
@@ -313,32 +277,6 @@ namespace jmodels
 
     // tensile strength
     Double ten;
-    Double comp;
-
-    //Define the softening on compressive strength
-    if (s->state_) {
-        Double u_cul = 2 * G_c / compression_ * -1.0;
-        Double un_current = 0.0;
-        if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
-        if (un_current > u_cul && un_current < (-compression_/kn_)) {
-            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
-        }
-        else if (s->normal_disp_ <= u_cul) {
-            dc = 1.0;
-            ds = 1.0;
-            s->normal_force_inc_ = 0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
-        }
-        else {
-            dc = 0.0;
-        }
-        comp = compression_ * ((1-dc) +1e-14)*s->area_;
-        fc_current = comp / s->area_;
-    }
-    else {
-        comp = compression_ * s->area_;
-        fc_current = comp / s->area_;
-    }
 
     //Define the softening tensile strength
     if (s->state_)
@@ -457,32 +395,11 @@ namespace jmodels
         if (f2 >= 0.0) 
         {
             shearCorrection(s, &IPlas, fsm, fsmax);
-            if (s->normal_disp_ < 0.0) {
-               //Check f3
-               Double f3;
-               f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-               if (f3 >= 0.0) {
-                   compCorrection(s, &IPlas, comp);
-               }
-            }
         }// if (f2)
-        //Check compressive failure (compressive cap)
-        if (s->normal_disp_ < 0.0) {
-            Double f3;
-            f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-            //If it violates the yield criterion for compression
-            if (f3 >= 0.0)
-            {
-                compCorrection(s, &IPlas, comp);
-                if (f2 >= 0.0) {
-                    shearCorrection(s, &IPlas, fsm, fsmax);
-                }
-            }
-        }//s->normal_disp < 0.0
     } // if (!tenflg)
   }//run
 
-  void JModelYopi_linSoft::tensionCorrection(State* s, UInt* IPlasticity, Double& ten) {
+  void JModelYopi_noCap::tensionCorrection(State* s, UInt* IPlasticity, Double& ten) {
       bool tenflag = false;
       if (IPlasticity) *IPlasticity = 1;
       s->normal_force_ = ten;
@@ -496,7 +413,7 @@ namespace jmodels
       s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 
-  void JModelYopi_linSoft::shearCorrection(State *s, UInt *IPlasticity, Double& fsm, Double& fsmax) {
+  void JModelYopi_noCap::shearCorrection(State* s, UInt* IPlasticity, Double& fsm, Double& fsmax) {
       if (IPlasticity) *IPlasticity = 2;
       Double rat = 0.0;
       if (fsm) rat = fsmax / fsm;
@@ -526,52 +443,6 @@ namespace jmodels
               s->normal_force_ += kn_ * s->area_ * dil * dusm;
           }// if (usm<zdd)
       }// if (dilation_)
-  }
-
-  void JModelYopi_linSoft::compCorrection(State *s, UInt *IPlasticity, Double &comp) {
-    if (IPlasticity) *IPlasticity = 3;
-    Double gradient;
-    Double X_yield;
-    Double Y_yield;
-    Double x;
-    Double ratc;
-    Double y;
-    Double a;
-    Double b;
-    Double c;
-    bool compFlag = false;
-    s->state_ |= comp_now;
-    //Calculate the radial distance from point to the origin
-    x = (s->normal_force_); //normal force would be larger than the position of Cn
-    y = s->shear_force_.mag();
-
-    R_violates = sqrt(pow(x, 2) + pow(y, 2));
-    gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
-    //Find the intercept from the gradient at the yield surface
-    a = Cnn + Css * pow(gradient, 2);
-    b = Cn;
-    c = -pow(comp, 2);
-    X_yield = solveQuadratic(a, b, c);
-    Y_yield = gradient * X_yield;
-    R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
-    //Correct the normal and shear forces to the yield surface
-    ratc = R_yield / R_violates;
-    if (!s->normal_force_) {
-        s->shear_force_ = DVect3(0, 0, 0);
-        compFlag = true;
-    }
-    if (dc == 1.0) {
-        //Full brittle failure
-        s->normal_force_ = 0.0;
-        s->shear_force_ = DVect3(0.0, 0.0, 0.0);
-    }
-    else {
-        s->normal_force_ = X_yield;
-        //Is the implementation for the shear force correction correct in here?
-        s->shear_force_ *= Y_yield / y;
-    }
-    s->normal_force_inc_ = 0.0;
-    s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 } // namespace models
 
