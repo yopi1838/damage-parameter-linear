@@ -32,6 +32,7 @@ namespace jmodels
     virtual bool           supportsPropertyScaling() const { return false; }
   private:
     Double kn_;
+    Double kn_initial_; //Initial value of the normal stiffness
     Double ks_;
     Double cohesion_;
     Double compression_;

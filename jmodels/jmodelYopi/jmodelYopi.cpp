@@ -51,6 +51,7 @@ namespace jmodels
 
   JModelYopi::JModelYopi() :
     kn_(0),
+    kn_initial_(0),
     ks_(0),
     kn_tab_(0),
     ks_tab_(0),
@@ -114,7 +115,7 @@ namespace jmodels
 
   String JModelYopi::getProperties() const
   {
-      return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
+      return(L"stiffness-normal       ,stiffness-initial    ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  , comp-residual ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
@@ -132,36 +133,37 @@ namespace jmodels
     switch (index) 
     {
     case 1:  return kn_;
-    case 2:  return ks_;
-    case 3:  return cohesion_;
-    case 4:  return compression_;
-    case 5:  return friction_;
-    case 6:  return dilation_;
-    case 7:  return tension_;
-    case 8:  return zero_dilation_;
-    case 9:  return res_cohesion_;
-    case 10:  return res_friction_;
-    case 11: return res_comp_;
-    case 12: return res_tension_;
-    case 13: return G_I;
-    case 14: return G_II;
-    case 15: return dt;
-    case 16: return ds;
-    case 17: return dc;
-    case 18: return d_ts;
-    case 19: return cc;
-    case 20: return dtTable_;
-    case 21: return dsTable_;
-    case 22: return tP_;
-    case 23: return sP_;
-    case 24: return G_c;
-    case 25: return Cn;
-    case 26: return Cnn;
-    case 27: return Css;
-    case 28: return fc_current;
-    case 29: return friction_current_;
-    case 30: return m_;
-    case 31: return n_;
+    case 2:  return kn_initial_;
+    case 3:  return ks_;
+    case 4:  return cohesion_;
+    case 5:  return compression_;
+    case 6:  return friction_;
+    case 7:  return dilation_;
+    case 8:  return tension_;
+    case 9:  return zero_dilation_;
+    case 10:  return res_cohesion_;
+    case 11:  return res_friction_;
+    case 12: return res_comp_;
+    case 13: return res_tension_;
+    case 14: return G_I;
+    case 15: return G_II;
+    case 16: return dt;
+    case 17: return ds;
+    case 18: return dc;
+    case 19: return d_ts;
+    case 20: return cc;
+    case 21: return dtTable_;
+    case 22: return dsTable_;
+    case 23: return tP_;
+    case 24: return sP_;
+    case 25: return G_c;
+    case 26: return Cn;
+    case 27: return Cnn;
+    case 28: return Css;
+    case 29: return fc_current;
+    case 30: return friction_current_;
+    case 31: return m_;
+    case 32: return n_;
     }
     return 0.0;
   }
@@ -172,34 +174,35 @@ namespace jmodels
     switch (index) 
     {
     case 1: kn_ = prop.toDouble();  break;
-    case 2: ks_ = prop.toDouble();  break;
-    case 3: cohesion_ = prop.toDouble();  break;
-    case 4: compression_ = prop.toDouble(); break;
-    case 5: friction_ = prop.toDouble();  break;
-    case 6: dilation_ = prop.toDouble();  break;
-    case 7: tension_ = prop.toDouble();  break;
-    case 8: zero_dilation_ = prop.toDouble();  break;
-    case 9: res_cohesion_ = prop.toDouble();  break;
-    case 10: res_friction_ = prop.toDouble();  break;
-    case 11: res_comp_ = prop.toDouble(); break;
-    case 12: res_tension_ = prop.toDouble();  break;
-    case 13: G_I = prop.toDouble(); break;
-    case 14: G_II = prop.toDouble(); break;
-    case 15: dt = prop.toDouble(); break;
-    case 16: ds = prop.toDouble(); break;
-    case 17: dc = prop.toDouble(); break;
-    case 18: d_ts = prop.toDouble(); break;
-    case 19: cc = prop.toDouble(); break;
-    case 20: dtTable_ = prop.toString();  break;
-    case 21: dsTable_ = prop.toString();  break;
-    case 22: tP_ = prop.toDouble(); break;
-    case 23: sP_ = prop.toDouble(); break;
-    case 24: G_c = prop.toDouble(); break;
-    case 25: Cn = prop.toDouble(); break;
-    case 26: Cnn = prop.toDouble(); break;
-    case 27: Css = prop.toDouble(); break;
-    case 28: fc_current = prop.toDouble(); break;
-    case 29: friction_current_ = prop.toDouble(); break;
+    case 2: kn_initial_ = prop.toDouble(); break;
+    case 3: ks_ = prop.toDouble();  break;
+    case 4: cohesion_ = prop.toDouble();  break;
+    case 5: compression_ = prop.toDouble(); break;
+    case 6: friction_ = prop.toDouble();  break;
+    case 7: dilation_ = prop.toDouble();  break;
+    case 8: tension_ = prop.toDouble();  break;
+    case 9: zero_dilation_ = prop.toDouble();  break;
+    case 10: res_cohesion_ = prop.toDouble();  break;
+    case 11: res_friction_ = prop.toDouble();  break;
+    case 12: res_comp_ = prop.toDouble(); break;
+    case 13: res_tension_ = prop.toDouble();  break;
+    case 14: G_I = prop.toDouble(); break;
+    case 15: G_II = prop.toDouble(); break;
+    case 16: dt = prop.toDouble(); break;
+    case 17: ds = prop.toDouble(); break;
+    case 18: dc = prop.toDouble(); break;
+    case 19: d_ts = prop.toDouble(); break;
+    case 20: cc = prop.toDouble(); break;
+    case 21: dtTable_ = prop.toString();  break;
+    case 22: dsTable_ = prop.toString();  break;
+    case 23: tP_ = prop.toDouble(); break;
+    case 24: sP_ = prop.toDouble(); break;
+    case 25: G_c = prop.toDouble(); break;
+    case 26: Cn = prop.toDouble(); break;
+    case 27: Cnn = prop.toDouble(); break;
+    case 28: Css = prop.toDouble(); break;
+    case 29: fc_current = prop.toDouble(); break;
+    case 30: friction_current_ = prop.toDouble(); break;
     case 31: n_ = prop.toDouble(); break;
     }
   }
@@ -213,6 +216,7 @@ namespace jmodels
     const JModelYopi *mm = dynamic_cast<const JModelYopi*>(m);
     if (!mm) throw std::runtime_error("Internal error: constitutive model dynamic cast failed.");
     kn_ = mm->kn_;
+    kn_initial_ = mm->kn_initial_;
     ks_ = mm->ks_;
     cohesion_ = mm->cohesion_;
     compression_ = mm->compression_;
@@ -267,7 +271,7 @@ namespace jmodels
     tP_ = 1.0;
     sP_ = 1.0;
 
-  
+    if (!kn_initial_) kn_initial_ = kn_;
     if (!G_c) 
         throw std::runtime_error("Internal error: Please input compressive fracture energy.");
     if (!n_) n_ = 1.0;
@@ -310,7 +314,6 @@ namespace jmodels
     if (s->state_ & comp_now) s->state_ |= comp_past;
     s->state_ &= ~comp_now;
     UInt IPlas = 0;
-
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
     
@@ -328,7 +331,7 @@ namespace jmodels
         s->normal_force_ += s->normal_force_inc_;
     }
     else {
-        
+        kna = kn_initial_ * s->area_;
         Double un_current = s->normal_disp_ * (-1.0);
         //Calculate elastic limit
         Double fel_limit = compression_ / 3.0 * s->area_;
@@ -432,12 +435,21 @@ namespace jmodels
                 else {
                     dt = s->working_[Dqt];
                 }
+                s->working_[3] = (1 - dt) * kn_;
+                bool sign = std::signbit(s->normal_disp_inc_);
+                if (sign) {
+                    kn_ = s->working_[3];
+                }
+                else {
+                    kn_ = kn_initial_;
+                }
             }
             else 
             {
-                dt = 0.0;
+                dt = s->working_[Dqt];
             }
             d_ts = dt + ds - dt * ds;
+            
             ten = -tension_ * ((1-d_ts) + 1e-14) * s->area_;
         }
     }
@@ -454,6 +466,7 @@ namespace jmodels
     if (f1 <= 0) 
     {
         tensionCorrection(s, &IPlas, ten);
+        
     }
     bool compflag = false;
     // shear force
