@@ -204,6 +204,8 @@ namespace jmodels
     }
   }
 
+  static const UInt Dqs = 0;
+  static const UInt Dqt = 1;
 
   void JModelYopi::copy(const JointModel *m)
   {
@@ -264,6 +266,7 @@ namespace jmodels
 
     tP_ = 1.0;
     sP_ = 1.0;
+
   
     if (!G_c) 
         throw std::runtime_error("Internal error: Please input compressive fracture energy.");
@@ -284,8 +287,7 @@ namespace jmodels
 
   }
 
-  static const UInt Dqs = 0;
-  static const UInt Dqt = 1;
+  
 
   Double JModelYopi::solveQuadratic(Double a, Double b, Double c) {
       Double x1;
@@ -424,6 +426,12 @@ namespace jmodels
                 tP_ = s->normal_disp_ / uel;
                 ////Exponential Softening
                 if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+                if (dt > s->working_[Dqt]) {
+                    s->working_[Dqt] = dt;
+                }
+                else {
+                    dt = s->working_[Dqt];
+                }
             }
             else 
             {
@@ -493,6 +501,12 @@ namespace jmodels
                sP_ = s->shear_disp_.mag() / usel;
                ////Exponential Softening
                if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+               if (ds > s->working_[Dqs]) {
+                   s->working_[Dqs] = ds;
+               }
+               else {
+                   ds = s->working_[Dqs];
+               }
                d_ts = dt + ds - dt * ds;
                Double resamueff = tan_res_friction_;
                if (!resamueff) resamueff = tan_friction_;
