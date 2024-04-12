@@ -85,6 +85,7 @@ namespace jmodels
     friction_current_(0),
     m_(0),
     n_(0),
+    uel_(0),
     R_violates(0),
     R_yield(0)
   {
@@ -120,7 +121,7 @@ namespace jmodels
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
           L"tensile-disp-plastic    ,shear-disp-plastic ,"
-          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   ult_ratio, peak_ratio");
+          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   ult_ratio, peak_ratio,uel");
   }
 
   String JModelYopi::getStates() const
@@ -164,6 +165,7 @@ namespace jmodels
     case 30: return friction_current_;
     case 31: return m_;
     case 32: return n_;
+    case 33: return uel_;
     }
     return 0.0;
   }
@@ -204,11 +206,13 @@ namespace jmodels
     case 29: fc_current = prop.toDouble(); break;
     case 30: friction_current_ = prop.toDouble(); break;
     case 31: n_ = prop.toDouble(); break;
+    case 32: uel_ = prop.toDouble(); break;
     }
   }
 
   static const UInt Dqs = 0;
   static const UInt Dqt = 1;
+  static const UInt Dqkn = 2;
 
   void JModelYopi::copy(const JointModel *m)
   {
@@ -271,7 +275,6 @@ namespace jmodels
     tP_ = 1.0;
     sP_ = 1.0;
 
-    if (!kn_initial_) kn_initial_ = kn_;
     if (!G_c) 
         throw std::runtime_error("Internal error: Please input compressive fracture energy.");
     if (!n_) n_ = 1.0;
@@ -316,8 +319,12 @@ namespace jmodels
     UInt IPlas = 0;
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
-    
-    Double uel = 0.0;
+
+    if (!s->state_) {
+        s->working_[Dqs] = 0.0;
+        s->working_[Dqt] = 0.0;
+        s->working_[Dqkn] = 0.0;
+    }
     Double ucel_ = n_ * compression_ / kn_;
     
     // normal force
@@ -366,7 +373,7 @@ namespace jmodels
 
     Double ten;
     Double comp = 0.0;
-    uel = tension_ / kn_; //elastic limit on tension
+     //elastic limit on tension
     Double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
     Double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
     Double kappa_ = ucel_ * compression_;
@@ -396,7 +403,7 @@ namespace jmodels
     else {
         comp = compression_ * s->area_;
     }
-
+    uel_ = tension_ / kn_initial_;
     //Define the softening tensile strength
     if (s->state_)
     {
@@ -423,33 +430,29 @@ namespace jmodels
         }
         else
         {
-            if (s->normal_disp_> 0.0 && s->normal_disp_ > uel)
+            if (s->normal_disp_ > 0.0)
             {
                 //if table_dt is provided.
-                tP_ = s->normal_disp_ / uel;
+                tP_ = s->normal_disp_ / (tension_ / kn_initial_);
                 ////Exponential Softening
                 if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                if (dt > s->working_[Dqt]) {
+                if (dt >= s->working_[Dqt]) {
                     s->working_[Dqt] = dt;
                 }
                 else {
                     dt = s->working_[Dqt];
                 }
-                s->working_[3] = (1 - dt) * kn_;
-                bool sign = std::signbit(s->normal_disp_inc_);
-                if (sign) {
-                    kn_ = s->working_[3];
-                }
-                else {
-                    kn_ = kn_initial_;
-                }
-            }
-            else 
+                d_ts = dt + ds - dt * ds;
+            }                       
+            Double un_hist_ten = tension_ / kn_;
+            if (s->normal_disp_> 0.0 && s->normal_disp_ > un_hist_ten)
             {
-                dt = s->working_[Dqt];
+                s->working_[Dqkn] = (1 - d_ts) * kn_;
+                bool sign = std::signbit(s->normal_disp_inc_);
+                if (sign) {                    
+                    kn_ = s->working_[Dqkn];
+                }
             }
-            d_ts = dt + ds - dt * ds;
-            
             ten = -tension_ * ((1-d_ts) + 1e-14) * s->area_;
         }
     }

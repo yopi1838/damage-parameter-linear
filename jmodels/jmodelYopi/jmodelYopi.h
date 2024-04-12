@@ -72,6 +72,7 @@ namespace jmodels
     Double friction_current_; //Current friction angle
     Double n_; //Ratio between the elastic displacement to compressive strength
     Double m_; //Ratio between ultimate displacement to displacement at peak compressive strength
+    Double uel_;
   };
 } // namespace models
 
