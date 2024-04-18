@@ -86,6 +86,7 @@ namespace jmodels
     m_(0),
     n_(0),
     uel_(0),
+    un_hist_comp(0),
     R_violates(0),
     R_yield(0)
   {
@@ -121,7 +122,7 @@ namespace jmodels
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
           L"tensile-disp-plastic    ,shear-disp-plastic ,"
-          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   ult_ratio, peak_ratio,uel");
+          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   ult_ratio, peak_ratio,uel,un_hist_comp");
   }
 
   String JModelYopi::getStates() const
@@ -166,6 +167,7 @@ namespace jmodels
     case 31: return m_;
     case 32: return n_;
     case 33: return uel_;
+    case 34: return un_hist_comp;
     }
     return 0.0;
   }
@@ -207,12 +209,14 @@ namespace jmodels
     case 30: friction_current_ = prop.toDouble(); break;
     case 31: n_ = prop.toDouble(); break;
     case 32: uel_ = prop.toDouble(); break;
+    case 33: un_hist_comp = prop.toDouble(); break;
     }
   }
 
   static const UInt Dqs = 0;
   static const UInt Dqt = 1;
   static const UInt Dqkn = 2;
+  static const UInt Dqc = 3;
 
   void JModelYopi::copy(const JointModel *m)
   {
@@ -279,7 +283,6 @@ namespace jmodels
         throw std::runtime_error("Internal error: Please input compressive fracture energy.");
     if (!n_) n_ = 1.0;
 
-
     if (G_I && iTension_d_)
         throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
 
@@ -319,17 +322,18 @@ namespace jmodels
     UInt IPlas = 0;
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
+    Double kn_comp_ = kn_initial_;
 
     if (!s->state_) {
         s->working_[Dqs] = 0.0;
         s->working_[Dqt] = 0.0;
-        s->working_[Dqkn] = 0.0;
+        s->working_[Dqkn] = 0.0;        
     }
-    Double ucel_ = n_ * compression_ / kn_;
+    Double ucel_ = n_ * compression_ / kn_comp_; //peak compressive displacement in positive
     
     // normal force
     Double fn0 = s->normal_force_;
-    Double uel_limit = compression_ / kn_ / 3.0;
+    Double uel_limit = compression_ / kn_comp_ / 5.0; //elastic limit for hardening in positive
 
     //Define the hardening part of the compressive strength here
     if (s->normal_disp_ > 0.0) {
@@ -337,25 +341,55 @@ namespace jmodels
         s->normal_force_inc_ = -kna * s->normal_disp_inc_;
         s->normal_force_ += s->normal_force_inc_;
     }
-    else {
-        kna = kn_initial_ * s->area_;
+    else {                
+        Double force_hist_comp = 0.0;
+        
+        kna = kn_comp_ * s->area_;
+        
+        //Get the current compressive displacement with inverted sign
         Double un_current = s->normal_disp_ * (-1.0);
+        
         //Calculate elastic limit
-        Double fel_limit = compression_ / 3.0 * s->area_;
+        Double fel_limit = compression_ / 5.0 * s->area_;
         Double fpeak = compression_ * s->area_;
+        bool sign = std::signbit(s->normal_disp_inc_); //Check whether unloading occurs      
         ////For now the stiffness is made the same.
-        if (un_current <= uel_limit) {
+        if (un_current < uel_limit) {
             s->normal_force_inc_ = -kna * s->normal_disp_inc_;
             s->normal_force_ += s->normal_force_inc_;
             fc_current = s->normal_force_ / s->area_;
+            if (!sign) {
+                un_hist_comp = s->working_[Dqc];
+                force_hist_comp = s->working_[4];
+                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                s->normal_force_ += s->normal_force_inc_;
+            }
         }
-        else if (!s->state_){
-            s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
-            fc_current = s->normal_force_ / s->area_;
+        else if (!s->state_){ //If tensile/shear undamaged but compression on hardening side.                             
+            if (!sign) {
+                un_hist_comp = s->working_[Dqc];
+                force_hist_comp = s->working_[4];
+                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                s->normal_force_ += s->normal_force_inc_;
+            }
+            else {
+                un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
+                force_hist_comp = s->normal_force_;
+                s->working_[Dqc] = un_hist_comp;
+                s->working_[4] = force_hist_comp;
+                s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
+                fc_current = s->normal_force_ / s->area_;
+            }       
         }
         else {
-            s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-            s->normal_force_ += s->normal_force_inc_;
+            if (un_current > uel_limit) {
+                s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
+                fc_current = s->normal_force_ / s->area_;
+            }
+            else {
+                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                s->normal_force_ += s->normal_force_inc_;
+            }
         }
         
     }

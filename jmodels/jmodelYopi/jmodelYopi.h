@@ -73,6 +73,7 @@ namespace jmodels
     Double n_; //Ratio between the elastic displacement to compressive strength
     Double m_; //Ratio between ultimate displacement to displacement at peak compressive strength
     Double uel_;
+    Double un_hist_comp;
   };
 } // namespace models
 
