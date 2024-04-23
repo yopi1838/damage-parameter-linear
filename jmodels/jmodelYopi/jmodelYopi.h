@@ -32,6 +32,7 @@ namespace jmodels
     virtual bool           supportsPropertyScaling() const { return false; }
   private:
     Double kn_;
+    Double kn_initial_; //Initial value of the normal stiffness
     Double ks_;
     Double cohesion_;
     Double compression_;
@@ -61,11 +62,18 @@ namespace jmodels
     Double Cn; //Cap user defined parameter for center of ellipsis
     void* iTension_d_ = nullptr;
     void* iShear_d_ = nullptr;
+    void* iHard_d_ = nullptr;
     Int    kn_tab_;
     Int    ks_tab_;
     Double  R_yield;
     Double  R_violates;
     Double fc_current;
+    Double res_comp_;
+    Double friction_current_; //Current friction angle
+    Double n_; //Ratio between the elastic displacement to compressive strength
+    Double m_; //Ratio between ultimate displacement to displacement at peak compressive strength
+    Double uel_;
+    Double un_hist_comp;
   };
 } // namespace models
 

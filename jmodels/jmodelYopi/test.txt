@@ -1,0 +1,13 @@
+                ///*s->normal_force_ = fel_limit + (fpeak - fel_limit) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
+                //fc_current = s->normal_force_ / s->area_;*/
+                //Double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * abs(un_hist_comp / ucel_);
+                //Double un_plastic = un_plastic_rat * ucel_;
+                //Double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
+                //Double Ks = (force_hist_comp) / (un_hist_comp - un_plastic);
+                //Double K1 = 1.5 * kn_comp_;
+                //Double K2 = 0.15 * kn_comp_ / (pow(1 + (un_hist_comp / ucel_), 2));
+                //Double B1 = K1 / Ks;
+                //Double B3 = 2 - (K2 / Ks) * (1 + B1);
+                //Double B2 = B1 - B3;
+                //s->normal_force_ = force_hist_comp + (0.0 - force_hist_comp) * (B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2));
+                //fc_current = s->normal_force_ / s->area_;

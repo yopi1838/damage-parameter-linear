@@ -51,6 +51,7 @@ namespace jmodels
 
   JModelYopi::JModelYopi() :
     kn_(0),
+    kn_initial_(0),
     ks_(0),
     kn_tab_(0),
     ks_tab_(0),
@@ -63,6 +64,7 @@ namespace jmodels
     res_cohesion_(0),
     res_friction_(0),
     res_tension_(0),
+    res_comp_(0),
     tan_friction_(0),
     tan_dilation_(0),
     tan_res_friction_(0),
@@ -79,9 +81,14 @@ namespace jmodels
     Cnn(0),
     Css(0),
     Cn(0),
-    R_yield(0),
+    fc_current(0),
+    friction_current_(0),
+    m_(0),
+    n_(0),
+    uel_(0),
+    un_hist_comp(0),
     R_violates(0),
-    fc_current(0)
+    R_yield(0)
   {
   }
 
@@ -110,11 +117,12 @@ namespace jmodels
 
   String JModelYopi::getProperties() const
   {
-      return(L"stiffness-normal       ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
-          L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  ,"
+      return(L"stiffness-normal       ,stiffness-initial    ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
+          L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  , comp-residual ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
-          L"table-dt    ,table-ds   ,"
-          L"tensile-disp-plastic    ,shear-disp-plastic ,G_c , Cn,Cnn,Css, R_yield, R_violates,fc_current");
+          L"table-dt    ,table-ds ,"
+          L"tensile-disp-plastic    ,shear-disp-plastic ,"
+          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp");
   }
 
   String JModelYopi::getStates() const
@@ -127,34 +135,39 @@ namespace jmodels
     switch (index) 
     {
     case 1:  return kn_;
-    case 2:  return ks_;
-    case 3:  return cohesion_;
-    case 4:  return compression_;
-    case 5:  return friction_;
-    case 6:  return dilation_;
-    case 7:  return tension_;
-    case 8:  return zero_dilation_;
-    case 9:  return res_cohesion_;
-    case 10:  return res_friction_;
-    case 11: return res_tension_;
-    case 12: return G_I;
-    case 13: return G_II;
-    case 14: return dt;
-    case 15: return ds;
-    case 16: return dc;
-    case 17: return d_ts;
-    case 18: return cc;
-    case 19: return dtTable_;
-    case 20: return dsTable_;
-    case 21: return tP_;
-    case 22: return sP_;
-    case 23: return G_c;
-    case 24: return Cn;
-    case 25: return Cnn;
-    case 26: return Css;
-    case 27: return R_yield;
-    case 28: return R_violates;
+    case 2:  return kn_initial_;
+    case 3:  return ks_;
+    case 4:  return cohesion_;
+    case 5:  return compression_;
+    case 6:  return friction_;
+    case 7:  return dilation_;
+    case 8:  return tension_;
+    case 9:  return zero_dilation_;
+    case 10:  return res_cohesion_;
+    case 11:  return res_friction_;
+    case 12: return res_comp_;
+    case 13: return res_tension_;
+    case 14: return G_I;
+    case 15: return G_II;
+    case 16: return dt;
+    case 17: return ds;
+    case 18: return dc;
+    case 19: return d_ts;
+    case 20: return cc;
+    case 21: return dtTable_;
+    case 22: return dsTable_;
+    case 23: return tP_;
+    case 24: return sP_;
+    case 25: return G_c;
+    case 26: return Cn;
+    case 27: return Cnn;
+    case 28: return Css;
     case 29: return fc_current;
+    case 30: return friction_current_;     
+    case 31: return n_;
+    case 32: return m_;
+    case 33: return uel_;
+    case 34: return un_hist_comp;
     }
     return 0.0;
   }
@@ -165,31 +178,45 @@ namespace jmodels
     switch (index) 
     {
     case 1: kn_ = prop.toDouble();  break;
-    case 2: ks_ = prop.toDouble();  break;
-    case 3: cohesion_ = prop.toDouble();  break;
-    case 4: compression_ = prop.toDouble(); break;
-    case 5: friction_ = prop.toDouble();  break;
-    case 6: dilation_ = prop.toDouble();  break;
-    case 7: tension_ = prop.toDouble();  break;
-    case 8: zero_dilation_ = prop.toDouble();  break;
-    case 9: res_cohesion_ = prop.toDouble();  break;
-    case 10: res_friction_ = prop.toDouble();  break;
-    case 11: res_tension_ = prop.toDouble();  break;
-    case 12: G_I = prop.toDouble(); break;
-    case 13: G_II = prop.toDouble(); break;
-    case 14: dt = prop.toDouble(); break;
-    case 15: ds = prop.toDouble(); break;
-    case 16: dc = prop.toDouble(); break;
-    case 17: d_ts = prop.toDouble(); break;
-    case 18: cc = prop.toDouble(); break;
-    case 19: dtTable_ = prop.toString();  break;
-    case 20: dsTable_ = prop.toString();  break;
-    case 21: tP_ = prop.toDouble(); break;
-    case 22: sP_ = prop.toDouble(); break;
-    case 23: G_c = prop.toDouble(); break;
+    case 2: kn_initial_ = prop.toDouble(); break;
+    case 3: ks_ = prop.toDouble();  break;
+    case 4: cohesion_ = prop.toDouble();  break;
+    case 5: compression_ = prop.toDouble(); break;
+    case 6: friction_ = prop.toDouble();  break;
+    case 7: dilation_ = prop.toDouble();  break;
+    case 8: tension_ = prop.toDouble();  break;
+    case 9: zero_dilation_ = prop.toDouble();  break;
+    case 10: res_cohesion_ = prop.toDouble();  break;
+    case 11: res_friction_ = prop.toDouble();  break;
+    case 12: res_comp_ = prop.toDouble(); break;
+    case 13: res_tension_ = prop.toDouble();  break;
+    case 14: G_I = prop.toDouble(); break;
+    case 15: G_II = prop.toDouble(); break;
+    case 16: dt = prop.toDouble(); break;
+    case 17: ds = prop.toDouble(); break;
+    case 18: dc = prop.toDouble(); break;
+    case 19: d_ts = prop.toDouble(); break;
+    case 20: cc = prop.toDouble(); break;
+    case 21: dtTable_ = prop.toString();  break;
+    case 22: dsTable_ = prop.toString();  break;
+    case 23: tP_ = prop.toDouble(); break;
+    case 24: sP_ = prop.toDouble(); break;
+    case 25: G_c = prop.toDouble(); break;
+    case 26: Cn = prop.toDouble(); break;
+    case 27: Cnn = prop.toDouble(); break;
+    case 28: Css = prop.toDouble(); break;
+    case 29: fc_current = prop.toDouble(); break;
+    case 30: friction_current_ = prop.toDouble(); break;
+    case 31: n_ = prop.toDouble(); break;    
+    case 32: uel_ = prop.toDouble(); break;
+    case 33: un_hist_comp = prop.toDouble(); break;
     }
   }
 
+  static const UInt Dqs = 0;
+  static const UInt Dqt = 1;
+  static const UInt Dqkn = 2;
+  static const UInt Dqc = 3;
 
   void JModelYopi::copy(const JointModel *m)
   {
@@ -197,6 +224,7 @@ namespace jmodels
     const JModelYopi *mm = dynamic_cast<const JModelYopi*>(m);
     if (!mm) throw std::runtime_error("Internal error: constitutive model dynamic cast failed.");
     kn_ = mm->kn_;
+    kn_initial_ = mm->kn_initial_;
     ks_ = mm->ks_;
     cohesion_ = mm->cohesion_;
     compression_ = mm->compression_;
@@ -206,6 +234,7 @@ namespace jmodels
     zero_dilation_ = mm->zero_dilation_;
     res_cohesion_ = mm->res_cohesion_;
     res_friction_ = mm->res_friction_;
+    res_comp_ = mm->res_comp_;
     res_tension_ = mm->res_tension_;
     tan_friction_ = mm->tan_friction_;
     tan_dilation_ = mm->tan_dilation_;
@@ -222,9 +251,12 @@ namespace jmodels
     tP_ = mm->tP_;
     sP_ = mm->sP_;
     G_c = mm->G_c;
-    R_yield = mm->R_yield;
-    R_violates = mm->R_violates;
     fc_current = mm->fc_current;
+    friction_current_ = mm->friction_current_;
+    n_ = mm->n_;
+    m_ = mm->m_;
+    uel_ = mm->uel_;
+    un_hist_comp = mm->un_hist_comp;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -235,12 +267,12 @@ namespace jmodels
     tan_dilation_    = tan(dilation_ * dDegRad);
 
     //Initialize parameter for the compressive cap
-    fc_current = compression_;
+    fc_current = 0.0;
     R_yield = 0.0;
     R_violates = 0.0;
 
     //Initialize the null pointer
-    iTension_d_ = iShear_d_ = nullptr;
+    iTension_d_ = iShear_d_ = iHard_d_ =  nullptr;
     
     //Get Table index for each material parameters
     if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
@@ -249,22 +281,25 @@ namespace jmodels
     tP_ = 1.0;
     sP_ = 1.0;
 
+    if (!G_c) 
+        throw std::runtime_error("Internal error: Please input compressive fracture energy.");
+    if (!n_) n_ = 1.0;
+
     if (G_I && iTension_d_)
         throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
 
     if (G_II && iShear_d_)
         throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
-    
+
     if (!compression_) compression_ = 1e20;
-    if (!G_c) G_c = 1e20;
+    if (!res_comp_) res_comp_ = 0.0;
     if (!Cn) Cn = 0.0;
     if (!Cnn) Cnn = 1.0;
     if (!Css) Css = 9.0;
 
   }
 
-  static const UInt Dqs = 0;
-  static const UInt Dqt = 1;
+  
 
   Double JModelYopi::solveQuadratic(Double a, Double b, Double c) {
       Double x1;
@@ -286,19 +321,96 @@ namespace jmodels
     s->state_ &= ~tension_now;
     if (s->state_ & comp_now) s->state_ |= comp_past;
     s->state_ &= ~comp_now;
-    UInt IPlas = 0;
-
-    Double kna  = kn_ * s->area_;
+    UInt IPlas = 0;    
+    Double kna;
     Double ksa  = ks_ * s->area_;
-    Double uel = 0.0;
-    Double ucel = 0.0; //Elastic displacement for the compression side
+    Double kn_comp_ = kn_initial_;
 
-    uel = tension_ / kn_;
-    ucel = compression_ / kn_; //For now the stiffness is made the same.
+    if (!s->state_) {
+        s->working_[Dqs] = 0.0;
+        s->working_[Dqt] = 0.0;
+        s->working_[Dqkn] = 0.0;        
+    }
+    Double ucel_ = n_ * compression_ / kn_comp_; //peak compressive displacement in positive
+    
     // normal force
     Double fn0 = s->normal_force_;
-    s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-    s->normal_force_ += s->normal_force_inc_;
+    Double uel_limit = compression_ / kn_comp_ / 5.0; //elastic limit for hardening in positive
+
+    //Define the hardening part of the compressive strength here
+    if (s->normal_disp_ > 0.0) {
+        kna = kn_ * s->area_;
+        //tension
+        s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+        s->normal_force_ += s->normal_force_inc_;
+    }
+    else {                
+        Double force_hist_comp = 0.0;
+        
+        kna = kn_comp_ * s->area_;
+        
+        //Get the current compressive displacement with inverted sign
+        Double un_current = s->normal_disp_ * (-1.0);
+        
+        //Calculate elastic limit
+        Double fel_limit = compression_ / 5.0 * s->area_;
+        Double fpeak = compression_ * s->area_;
+
+        bool sign = std::signbit(s->normal_disp_inc_); //Check whether unloading occurs      
+        ////For now the stiffness is made the same.
+        if (un_current < uel_limit) {
+            s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+            s->normal_force_ += s->normal_force_inc_;
+            fc_current = s->normal_force_ / s->area_;          
+        }
+        else if (!s->state_){ //If tensile/shear undamaged but compression on hardening side.                             
+            if (!sign) {
+                /*un_hist_comp = s->working_[Dqc];
+                force_hist_comp = s->working_[4];*/
+                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                s->normal_force_ += s->normal_force_inc_;
+            }
+            else {
+                un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
+                force_hist_comp = s->normal_force_;
+                s->working_[Dqc] = un_hist_comp;
+                s->working_[4] = force_hist_comp;
+                s->normal_force_ = fel_limit + (fpeak - (fel_limit)) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
+                fc_current = s->normal_force_ / s->area_;
+            }       
+        }
+        else {
+            if (s->state_ & tension_past) {
+                if (un_current > uel_limit) {
+                    if (!sign) {
+                        /*un_hist_comp = s->working_[Dqc];
+                        force_hist_comp = s->working_[4];*/
+                        s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                        s->normal_force_ += s->normal_force_inc_;
+                    }
+                    else {
+                        un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
+                        force_hist_comp = s->normal_force_;
+                        s->working_[Dqc] = un_hist_comp;
+                        s->working_[4] = force_hist_comp;
+                        s->normal_force_ = fel_limit + (fpeak - (fel_limit)) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
+                        fc_current = s->normal_force_ / s->area_;
+                    }
+                }
+                else {
+                    s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                    s->normal_force_ += s->normal_force_inc_;
+                    fc_current = s->normal_force_ / s->area_;
+                }
+            }
+            else {
+                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                s->normal_force_ += s->normal_force_inc_;
+                fc_current = s->normal_force_ / s->area_;
+            }                              
+        }
+        
+    }
 
     // correction for time step in which joint opens (or goes into tension)
     // s->dnop_ is part of s->normal_disp_inc_ at which separation or tension takes place
@@ -311,35 +423,39 @@ namespace jmodels
         if (s->dnop_ > s->normal_disp_inc_) s->dnop_ = s->normal_disp_inc_;
     }
 
-    // tensile strength
     Double ten;
-    Double comp;
-
+    Double comp = 0.0;
+     //elastic limit on tension
+    Double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+    Double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+    Double kappa_ = ucel_ * compression_;
+    Double gamma_ = 2.0;
+    m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_ 
+            + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2+ gamma_) - 0.25 * beta_ * (2-3* gamma_));
+    Double ucul_ = m_ * ucel_;
     //Define the softening on compressive strength
     if (s->state_) {
-        Double u_cul = 2 * G_c / compression_ * -1.0;
         Double un_current = 0.0;
         if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
-        if (un_current > u_cul && un_current < (-compression_/kn_)) {
-            dc = (s->normal_disp_ - (-compression_ / kn_)) / (u_cul - (-compression_ / kn_));
+        if ((un_current < ucel_ * (-1.0)) && (un_current > ucul_ * (-1.0))) {
+            dc = (1 - (mid_comp/compression_)) * pow((un_current - ucel_ * (-1.0)) / (ucul_ * (-1.0) - ucel_ * (-1.0)),2);
         }
-        else if (s->normal_disp_ <= u_cul) {
-            dc = 1.0;
-            ds = 1.0;
+        else if (un_current <= ucul_ * (-1.0)) {
+            Double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
+            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current*(-1.0) - ucul_)/(mid_comp- res_comp_));
             s->normal_force_inc_ = 0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
         }
         else {
             dc = 0.0;
         }
-        comp = compression_ * ((1-dc) +1e-14)*s->area_;
+        comp = compression_ * ((1 - dc)) * s->area_;
         fc_current = comp / s->area_;
     }
     else {
         comp = compression_ * s->area_;
-        fc_current = comp / s->area_;
     }
-
+    uel_ = tension_ / kn_initial_;
     //Define the softening tensile strength
     if (s->state_)
     {
@@ -366,18 +482,26 @@ namespace jmodels
         }
         else
         {
-            if (s->normal_disp_> 0.0 && s->normal_disp_ > uel)
+            if (s->normal_disp_ > 0.0)
             {
+                bool sign = std::signbit(s->normal_disp_inc_);
                 //if table_dt is provided.
-                tP_ = s->normal_disp_ / uel;
-                ////Exponential Softening
-                if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-            }
-            else 
+                tP_ = s->normal_disp_ / (tension_ / kn_initial_);
+                ////Exponential Softening                
+                if (!sign) {
+                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+                }
+                d_ts = dt + ds - dt * ds;
+            }                       
+            Double un_hist_ten = tension_ / kn_;
+            if (s->normal_disp_> 0.0 && s->normal_disp_ > un_hist_ten)
             {
-                dt = 0.0;
+                s->working_[Dqkn] = (1 - d_ts) * kn_;
+                bool sign = std::signbit(s->normal_disp_inc_);
+                if (sign) {                                        
+                    kn_ = (1 - d_ts) * kn_;
+                }
             }
-            d_ts = dt + ds - dt * ds;
             ten = -tension_ * ((1-d_ts) + 1e-14) * s->area_;
         }
     }
@@ -394,6 +518,7 @@ namespace jmodels
     if (f1 <= 0) 
     {
         tensionCorrection(s, &IPlas, ten);
+        
     }
     bool compflag = false;
     // shear force
@@ -431,6 +556,7 @@ namespace jmodels
                 if (!resamueff) resamueff = tan_friction_;
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
                 Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+                friction_current_ = atan(tan_friction_c) / dDegRad;
                 Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                 fsmax = tc;
                 f2 = fsm - tc;
@@ -440,11 +566,18 @@ namespace jmodels
                sP_ = s->shear_disp_.mag() / usel;
                ////Exponential Softening
                if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+               if (ds > s->working_[Dqs]) {
+                   s->working_[Dqs] = ds;
+               }
+               else {
+                   ds = s->working_[Dqs];
+               }
                d_ts = dt + ds - dt * ds;
                Double resamueff = tan_res_friction_;
                if (!resamueff) resamueff = tan_friction_;
                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
                Double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+               friction_current_ = atan(tan_friction_c) / dDegRad;
                Double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                fsmax = tc;
                f2 = fsm - tc;
@@ -452,6 +585,8 @@ namespace jmodels
         }
         else {
             f2 = fsm - fsmax;
+            cc = cohesion_;
+            friction_current_ = atan(tan_friction_) / dDegRad;
         }// if (state)
         //Check if slip
         if (f2 >= 0.0) 
@@ -562,12 +697,11 @@ namespace jmodels
     }
     if (dc == 1.0) {
         //Full brittle failure
-        s->normal_force_ = 0.0;
+        s->normal_force_ = 1e-14;
         s->shear_force_ = DVect3(0.0, 0.0, 0.0);
     }
     else {
         s->normal_force_ = X_yield;
-        //Is the implementation for the shear force correction correct in here?
         s->shear_force_ *= Y_yield / y;
     }
     s->normal_force_inc_ = 0.0;
