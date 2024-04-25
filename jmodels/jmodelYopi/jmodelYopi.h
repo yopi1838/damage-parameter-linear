@@ -4,9 +4,9 @@
 
 namespace jmodels
 {
-  class JModelYopi_linSoft : public JointModel {
+  class JModelYopi : public JointModel {
   public:
-    JModelYopi_linSoft();
+    JModelYopi();
     virtual String         getName() const;
     virtual String         getPluginName() const { return getName(); }
     virtual String         getFullName() const;
@@ -15,7 +15,7 @@ namespace jmodels
     virtual String         getStates() const;
     virtual Variant        getProperty(UInt index) const;
     virtual void           setProperty(UInt index,const Variant &p,UInt restoreVersion=0);
-    virtual JModelYopi_linSoft  *clone() const { return new JModelYopi_linSoft(); }
+    virtual JModelYopi*clone() const { return new JModelYopi(); }
     virtual Double         getMaxNormalStiffness() const { return kn_; }
     virtual Double         getMaxShearStiffness() const { return ks_; }
     virtual void           copy(const JointModel *mod);
@@ -74,6 +74,8 @@ namespace jmodels
     Double m_; //Ratio between ultimate displacement to displacement at peak compressive strength
     Double uel_;
     Double un_hist_comp;
+    Double peak_normal;
+    Double lambda;
   };
 } // namespace models
 

@@ -15,7 +15,7 @@ extern "C" __declspec(dllexport) const char *getName()
 #ifdef JMODELDEBUG
   return "jmodelyopid";
 #else
-  return "jmodelyopi_linsoft";
+  return "jmodelyopi";
 #endif
 }
 
@@ -31,7 +31,7 @@ extern "C" __declspec(dllexport) unsigned getMinorVersion()
 
 extern "C" __declspec(dllexport) void *createInstance() 
 {
-  jmodels::JModelYopi_linSoft*m = new jmodels::JModelYopi_linSoft();
+  jmodels::JModelYopi*m = new jmodels::JModelYopi();
   return (void *)m;
 }
 #endif
@@ -49,7 +49,7 @@ namespace jmodels
   static const UInt comp_now = 0x10;
   static const UInt comp_past = 0x20;
 
-  JModelYopi_linSoft::JModelYopi_linSoft() :
+  JModelYopi::JModelYopi() :
     kn_(0),
     kn_initial_(0),
     ks_(0),
@@ -87,21 +87,23 @@ namespace jmodels
     n_(0),
     uel_(0),
     un_hist_comp(0),
+      peak_normal(0),
+      lambda(0),
     R_violates(0),
     R_yield(0)
   {
   }
 
-  String JModelYopi_linSoft::getName() const
+  String JModelYopi::getName() const
   { 
 #ifdef JMODELDEBUG
     return L"yopid";
 #else
-    return L"yopi_linsoft";
+    return L"yopi";
 #endif
   }
 
-  String JModelYopi_linSoft::getFullName() const
+  String JModelYopi::getFullName() const
   { 
 #ifdef JMODELDEBUG
     return L"Yopi Debug";
@@ -110,27 +112,27 @@ namespace jmodels
 #endif
   }
 
-  UInt JModelYopi_linSoft::getMinorVersion() const
+  UInt JModelYopi::getMinorVersion() const
   {
     return UPDATE_VERSION;
   }
 
-  String JModelYopi_linSoft::getProperties() const
+  String JModelYopi::getProperties() const
   {
       return(L"stiffness-normal       ,stiffness-initial    ,stiffness-shear        ,cohesion   ,compression  ,friction   ,dilation   ,"
           L"tension   ,dilation-zero    ,cohesion-residual  ,friction-residual  , comp-residual ,"
           L"tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           L"table-dt    ,table-ds ,"
           L"tensile-disp-plastic    ,shear-disp-plastic ,"
-          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp");
+          L"G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,lambda");
   }
 
-  String JModelYopi_linSoft::getStates() const
+  String JModelYopi::getStates() const
   {
     return L"slip-n,tension-n,slip-p,tension-p,cap-n,cap-p";
   }
 
-  Variant JModelYopi_linSoft::getProperty(UInt index) const
+  Variant JModelYopi::getProperty(UInt index) const
   {
     switch (index) 
     {
@@ -168,11 +170,13 @@ namespace jmodels
     case 32: return m_;
     case 33: return uel_;
     case 34: return un_hist_comp;
+    case 35: return peak_normal;
+    case 36: return lambda;
     }
     return 0.0;
   }
 
-  void JModelYopi_linSoft::setProperty(UInt index,const Variant &prop,UInt)
+  void JModelYopi::setProperty(UInt index,const Variant &prop,UInt)
   {
     JointModel::setProperty(index,prop);
     switch (index) 
@@ -208,8 +212,11 @@ namespace jmodels
     case 29: fc_current = prop.toDouble(); break;
     case 30: friction_current_ = prop.toDouble(); break;
     case 31: n_ = prop.toDouble(); break;    
-    case 32: uel_ = prop.toDouble(); break;
-    case 33: un_hist_comp = prop.toDouble(); break;
+    case 32: m_ = prop.toDouble(); break;
+    case 33: uel_ = prop.toDouble(); break;
+    case 34: un_hist_comp = prop.toDouble(); break;
+    case 35: peak_normal = prop.toDouble(); break;
+    case 36: lambda = prop.toDouble(); break;
     }
   }
 
@@ -218,10 +225,10 @@ namespace jmodels
   static const UInt Dqkn = 2;
   static const UInt Dqc = 3;
 
-  void JModelYopi_linSoft::copy(const JointModel *m)
+  void JModelYopi::copy(const JointModel *m)
   {
     JointModel::copy(m);
-    const JModelYopi_linSoft*mm = dynamic_cast<const JModelYopi_linSoft*>(m);
+    const JModelYopi*mm = dynamic_cast<const JModelYopi*>(m);
     if (!mm) throw std::runtime_error("Internal error: constitutive model dynamic cast failed.");
     kn_ = mm->kn_;
     kn_initial_ = mm->kn_initial_;
@@ -257,9 +264,11 @@ namespace jmodels
     m_ = mm->m_;
     uel_ = mm->uel_;
     un_hist_comp = mm->un_hist_comp;
+    peak_normal = mm->peak_normal;
+    lambda = mm->lambda;
   }
 
-  void JModelYopi_linSoft::initialize(UByte dim,State *s)
+  void JModelYopi::initialize(UByte dim,State *s)
   {
     JointModel::initialize(dim,s);
     tan_friction_    = tan(friction_ * dDegRad);
@@ -296,12 +305,12 @@ namespace jmodels
     if (!Cn) Cn = 0.0;
     if (!Cnn) Cnn = 1.0;
     if (!Css) Css = 9.0;
-
+    if (!lambda) lambda = 0.5;
   }
 
   
 
-  Double JModelYopi_linSoft::solveQuadratic(Double a, Double b, Double c) {
+  Double JModelYopi::solveQuadratic(Double a, Double b, Double c) {
       Double x1;
       Double x2;
       x1 = (-b + sqrt(pow(b, 2) - 4 * a * c)) / (2 * a);
@@ -310,7 +319,7 @@ namespace jmodels
       else return x2;
   }
 
-  void JModelYopi_linSoft::run(UByte dim,State *s)
+  void JModelYopi::run(UByte dim,State *s)
   {
     JointModel::run(dim,s);
     /* --- state indicator:                                  */
@@ -322,7 +331,7 @@ namespace jmodels
     if (s->state_ & comp_now) s->state_ |= comp_past;
     s->state_ &= ~comp_now;
     UInt IPlas = 0;    
-    Double kna;
+    Double kna = 0.0;
     Double ksa  = ks_ * s->area_;
     Double kn_comp_ = kn_initial_;
 
@@ -331,85 +340,80 @@ namespace jmodels
         s->working_[Dqt] = 0.0;
         s->working_[Dqkn] = 0.0;        
     }
+
     Double ucel_ = n_ * compression_ / kn_comp_; //peak compressive displacement in positive
     
     // normal force
     Double fn0 = s->normal_force_;
     Double uel_limit = compression_ / kn_comp_ / 5.0; //elastic limit for hardening in positive
+    Double sn_ = s->normal_force_ / s->area_;
+    Double dn_ = s->normal_disp_inc_ * (-1.0);
+    Double un_current = s->normal_disp_ * (-1.0);
+    //Calculate elastic limit
+    Double fel_limit = compression_ / 5.0;
+    Double fpeak = compression_;
 
     //Define the hardening part of the compressive strength here
-    if (s->normal_disp_ > 0.0) {
+    if (sn_ <= 0.0 || un_current <= 0.0) {
         kna = kn_ * s->area_;
         //tension
-        s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+        s->normal_force_inc_ = kna * dn_;
         s->normal_force_ += s->normal_force_inc_;
     }
-    else {                
-        Double force_hist_comp = 0.0;
-        
+    else {   
         kna = kn_comp_ * s->area_;
-        
-        //Get the current compressive displacement with inverted sign
-        Double un_current = s->normal_disp_ * (-1.0);
-        
-        //Calculate elastic limit
-        Double fel_limit = compression_ / 5.0 * s->area_;
-        Double fpeak = compression_ * s->area_;
-
-        bool sign = std::signbit(s->normal_disp_inc_); //Check whether unloading occurs      
-        ////For now the stiffness is made the same.
-        if (un_current < uel_limit) {
-            s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-            s->normal_force_ += s->normal_force_inc_;
-            fc_current = s->normal_force_ / s->area_;          
-        }
-        else if (!s->state_){ //If tensile/shear undamaged but compression on hardening side.                             
-            if (!sign) {
-                /*un_hist_comp = s->working_[Dqc];
-                force_hist_comp = s->working_[4];*/
-                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-                s->normal_force_ += s->normal_force_inc_;
-            }
-            else {
+        if (sn_ >= peak_normal && (s->state_ & comp_past) == 0.0) { // Loading
+            if (un_current + dn_ < uel_limit) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
-                force_hist_comp = s->normal_force_;
-                s->working_[Dqc] = un_hist_comp;
-                s->working_[4] = force_hist_comp;
-                s->normal_force_ = fel_limit + (fpeak - (fel_limit)) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
-                fc_current = s->normal_force_ / s->area_;
-            }       
-        }
-        else {
-            if (s->state_ & tension_past) {
-                if (un_current > uel_limit) {
-                    if (!sign) {
-                        /*un_hist_comp = s->working_[Dqc];
-                        force_hist_comp = s->working_[4];*/
-                        s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-                        s->normal_force_ += s->normal_force_inc_;
-                    }
-                    else {
-                        un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
-                        force_hist_comp = s->normal_force_;
-                        s->working_[Dqc] = un_hist_comp;
-                        s->working_[4] = force_hist_comp;
-                        s->normal_force_ = fel_limit + (fpeak - (fel_limit)) * pow((2 * (un_current - uel_limit) / ucel_) - pow((un_current - uel_limit) / ucel_, 2), 0.5);
-                        fc_current = s->normal_force_ / s->area_;
-                    }
-                }
-                else {
-                    s->normal_force_inc_ = -kna * s->normal_disp_inc_;
-                    s->normal_force_ += s->normal_force_inc_;
-                    fc_current = s->normal_force_ / s->area_;
-                }
-            }
-            else {
-                s->normal_force_inc_ = -kna * s->normal_disp_inc_;
+                //Elastic unloading
+                s->normal_force_inc_ = kna * dn_;
                 s->normal_force_ += s->normal_force_inc_;
                 fc_current = s->normal_force_ / s->area_;
-            }                              
+            }
+            else if (!s->state_ || un_current + dn_ > uel_limit) {
+                un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes                
+                s->normal_force_ = fel_limit * s->area_ + (fpeak * s->area_ - (fel_limit * s->area_)) * pow((2 * ((un_current + dn_) - uel_limit) / ucel_) - pow(((un_current + dn_) - uel_limit) / ucel_, 2), 0.5);
+                fc_current = s->normal_force_ / s->area_;
+            }
         }
-        
+        else {           
+            if (dn_ < 0.0) {
+                //Double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_),2) + 0.25 * (un_hist_comp / ucel_);
+                Double un_plastic = 0.0;
+                Double k1 = 1.5 * kn_comp_;
+                Double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
+                Double Es = peak_normal / (un_hist_comp - un_plastic);
+                Double B1 = k1 / Es;
+                Double B3 = 2 - (k2 / Es) * (1 + B1);
+                Double B2 = B1 - B3;
+                Double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
+                Double fm = peak_normal + (0.0 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+                s->normal_force_ = fm * s->area_;
+                fc_current = fm;
+            }
+            else {
+                un_hist_comp = s->normal_disp_* (-1.0);
+                //Elastic unloading
+                kna = kn_comp_ * s->area_;
+                s->normal_force_inc_ = kna * dn_;
+                s->normal_force_ += s->normal_force_inc_;
+                fc_current = s->normal_force_ / s->area_;
+            }
+            ////EMM style bilinear unloading
+            //if (sn_ < lambda * compression_) {
+            //    Double kn_sec = sn_ / un_current;
+            //    s->normal_force_inc_ = kn_sec * dn_ * s->area_;
+            //    s->normal_force_ += s->normal_force_inc_;
+            //    fc_current = s->normal_force_ / s->area_;
+            //}
+            //else {
+            //    //Elastic unloading
+            //    kna = kn_comp_ * s->area_;
+            //    s->normal_force_inc_ = kna * dn_;
+            //    s->normal_force_ += s->normal_force_inc_;
+            //    fc_current = s->normal_force_ / s->area_;
+            //}
+        } //unloading  
     }
 
     // correction for time step in which joint opens (or goes into tension)
@@ -435,14 +439,12 @@ namespace jmodels
     Double ucul_ = m_ * ucel_;
     //Define the softening on compressive strength
     if (s->state_) {
-        Double un_current = 0.0;
-        if (s->normal_disp_ < 0.0) un_current = s->normal_disp_;
-        if ((un_current < ucel_ * (-1.0)) && (un_current > ucul_ * (-1.0))) {
-            dc = (1 - (mid_comp/compression_)) * pow((un_current - ucel_ * (-1.0)) / (ucul_ * (-1.0) - ucel_ * (-1.0)),2);
+        if ((un_current > ucel_) && (un_current < ucul_)) {
+            dc = (1 - (mid_comp/compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_),2);
         }
-        else if (un_current <= ucul_ * (-1.0)) {
+        else if (un_current >= ucul_) {
             Double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current*(-1.0) - ucul_)/(mid_comp- res_comp_));
+            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_)/(mid_comp- res_comp_));
             s->normal_force_inc_ = 0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
         }
@@ -463,8 +465,7 @@ namespace jmodels
             //if G_I is provided
             //Calculate ultimate(bound) displacement
             Double u_ul = 2 * G_I / tension_;
-            Double un_current = 0.0;
-            if (s->normal_disp_ > 0.0) un_current = s->normal_disp_;
+            un_current = s->normal_disp_;
             if (un_current < u_ul && un_current > (tension_/ kn_))
             {
                 dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
@@ -482,26 +483,25 @@ namespace jmodels
         }
         else
         {
-            if (s->normal_disp_ > 0.0)
+            if (un_current <= 0.0)
             {
-                bool sign = std::signbit(s->normal_disp_inc_);
+                bool sign = std::signbit(dn_);
                 //if table_dt is provided.
                 tP_ = s->normal_disp_ / (tension_ / kn_initial_);
                 ////Exponential Softening                
-                if (!sign) {
+                if (sign) {
                     if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
                 }
                 d_ts = dt + ds - dt * ds;
-            }                       
-            Double un_hist_ten = tension_ / kn_;
-            if (s->normal_disp_> 0.0 && s->normal_disp_ > un_hist_ten)
-            {
-                s->working_[Dqkn] = (1 - d_ts) * kn_;
-                bool sign = std::signbit(s->normal_disp_inc_);
-                if (sign) {                                        
-                    kn_ = (1 - d_ts) * kn_;
+                Double un_hist_ten = -tension_ / kn_;
+                if (un_current < un_hist_ten)
+                {
+                    s->working_[Dqkn] = (1 - d_ts) * kn_;
+                    if (sign) {
+                        kn_ = (1 - d_ts) * kn_;
+                    }
                 }
-            }
+            }                                   
             ten = -tension_ * ((1-d_ts) + 1e-14) * s->area_;
         }
     }
@@ -615,9 +615,13 @@ namespace jmodels
             }
         }//s->normal_disp < 0.0
     } // if (!tenflg)
+    
+      // store peak
+    if (dn_ >= 0.0 && un_current >= 0.0)
+        peak_normal = s->normal_force_ / s->area_;
   }//run
 
-  void JModelYopi_linSoft::tensionCorrection(State* s, UInt* IPlasticity, Double& ten) {
+  void JModelYopi::tensionCorrection(State* s, UInt* IPlasticity, Double& ten) {
       bool tenflag = false;
       if (IPlasticity) *IPlasticity = 1;
       s->normal_force_ = ten;
@@ -631,7 +635,7 @@ namespace jmodels
       s->shear_force_inc_ = DVect3(0, 0, 0);
   }
 
-  void JModelYopi_linSoft::shearCorrection(State *s, UInt *IPlasticity, Double& fsm, Double& fsmax) {
+  void JModelYopi::shearCorrection(State *s, UInt *IPlasticity, Double& fsm, Double& fsmax) {
       if (IPlasticity) *IPlasticity = 2;
       Double rat = 0.0;
       if (fsm) rat = fsmax / fsm;
@@ -663,7 +667,7 @@ namespace jmodels
       }// if (dilation_)
   }
 
-  void JModelYopi_linSoft::compCorrection(State *s, UInt *IPlasticity, Double &comp) {
+  void JModelYopi::compCorrection(State *s, UInt *IPlasticity, Double &comp) {
     if (IPlasticity) *IPlasticity = 3;
     Double gradient;
     Double X_yield;

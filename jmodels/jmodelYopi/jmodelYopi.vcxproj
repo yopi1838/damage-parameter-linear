@@ -86,7 +86,7 @@
     <IntDir Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">out\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">false</LinkIncremental>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">jmodelyopilinsoft007</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">jmodelyopi007</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">cmodelexample007_debug</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">jmodelyopi007_debug</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTestDebug|x64'">cmodelexampled007_debug</TargetName>
