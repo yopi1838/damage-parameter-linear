@@ -76,6 +76,7 @@ namespace jmodels
     Double un_hist_comp;
     Double peak_normal;
     Double lambda;
+    Double ds_hist;
   };
 } // namespace models
 

@@ -89,6 +89,7 @@ namespace jmodels
     un_hist_comp(0),
       peak_normal(0),
       lambda(0),
+      ds_hist(0),
     R_violates(0),
     R_yield(0)
   {
@@ -172,6 +173,7 @@ namespace jmodels
     case 34: return un_hist_comp;
     case 35: return peak_normal;
     case 36: return lambda;
+    case 37: return ds_hist;
     }
     return 0.0;
   }
@@ -217,6 +219,7 @@ namespace jmodels
     case 34: un_hist_comp = prop.toDouble(); break;
     case 35: peak_normal = prop.toDouble(); break;
     case 36: lambda = prop.toDouble(); break;
+    case 37: ds_hist = prop.toDouble(); break;
     }
   }
 
@@ -266,6 +269,7 @@ namespace jmodels
     un_hist_comp = mm->un_hist_comp;
     peak_normal = mm->peak_normal;
     lambda = mm->lambda;
+    ds_hist = mm->ds_hist;
   }
 
   void JModelYopi::initialize(UByte dim,State *s)
@@ -333,7 +337,7 @@ namespace jmodels
     UInt IPlas = 0;    
     Double kna = 0.0;
     Double ksa  = ks_ * s->area_;
-    Double kn_comp_ = kn_initial_;
+    Double kn_comp_ = kn_initial_;    
 
     if (!s->state_) {
         s->working_[Dqs] = 0.0;
@@ -529,7 +533,8 @@ namespace jmodels
         
         //Because the normal force is already in negative anyway, we don't have to change the signs
         Double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
-        Double fsm = s->shear_force_.mag();
+        Double fsm = s->shear_force_.mag();        
+        if (!s->state_) ds_hist = 0.0;
         Double f2;
         if (fsmax < 0.0) fsmax = 0.0;
         if (s->state_) {
@@ -564,13 +569,13 @@ namespace jmodels
             else 
             {
                sP_ = s->shear_disp_.mag() / usel;
-               ////Exponential Softening
+               ////Exponential Softening                
                if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-               if (ds > s->working_[Dqs]) {
-                   s->working_[Dqs] = ds;
+               if (ds >= ds_hist) {
+                   ds_hist = ds;
                }
                else {
-                   ds = s->working_[Dqs];
+                   ds = ds_hist;
                }
                d_ts = dt + ds - dt * ds;
                Double resamueff = tan_res_friction_;
