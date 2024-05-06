@@ -443,18 +443,22 @@ namespace jmodels
     Double ucul_ = m_ * ucel_;
     //Define the softening on compressive strength
     if (s->state_) {
-        if ((un_current > ucel_) && (un_current < ucul_)) {
-            dc = (1 - (mid_comp/compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_),2);
-        }
-        else if (un_current >= ucul_) {
-            Double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_)/(mid_comp- res_comp_));
-            s->normal_force_inc_ = 0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
-        }
-        else {
-            dc = 0.0;
-        }
+        if (s->normal_disp_inc_ < 0.0) {
+            if ((un_current >= ucel_) && (un_current < ucul_)) {
+                dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
+                s->normal_force_inc_ = 0;
+                s->shear_force_inc_ = DVect3(0, 0, 0);
+            }
+            else if (un_current >= ucul_) {
+                Double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
+                dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
+                s->normal_force_inc_ = 0;
+                s->shear_force_inc_ = DVect3(0, 0, 0);
+            }
+            else {
+                dc = 0.0;
+            }
+        }        
         comp = compression_ * ((1 - dc)) * s->area_;
         fc_current = comp / s->area_;
     }
