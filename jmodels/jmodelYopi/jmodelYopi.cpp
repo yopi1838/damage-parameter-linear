@@ -424,19 +424,15 @@ namespace jmodels
             ten = -tension_ * (1 - d_ts + 1e-14) * s->area_;
         }
         else
-        {
+        {            
             if (s->normal_disp_> 0.0 && s->normal_disp_ > uel)
             {
                 //if table_dt is provided.
                 tP_ = s->normal_disp_ / uel;
-                ////Exponential Softening
-                if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                if (dt > s->working_[Dqt]) {
-                    s->working_[Dqt] = dt;
-                }
-                else {
-                    dt = s->working_[Dqt];
-                }
+                if (s->normal_disp_inc_ > 0.0) {
+                    ////Exponential Softening               
+                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+                }                               
             }
             else 
             {
@@ -470,6 +466,7 @@ namespace jmodels
         //Because the normal force is already in negative anyway, we don't have to change the signs
         Double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
         Double fsm = s->shear_force_.mag();
+        Double us_current = 0.0;
         Double f2;
         if (fsmax < 0.0) fsmax = 0.0;
         if (s->state_) {
@@ -504,14 +501,11 @@ namespace jmodels
             else 
             {
                sP_ = s->shear_disp_.mag() / usel;
-               ////Exponential Softening
-               if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-               if (ds > s->working_[Dqs]) {
-                   s->working_[Dqs] = ds;
-               }
-               else {
-                   ds = s->working_[Dqs];
-               }
+               ////Exponential Softening               
+               if (us_current <= s->shear_disp_.mag()) {
+                   us_current = s->shear_disp_.mag();
+                   if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+               }               
                d_ts = dt + ds - dt * ds;
                Double resamueff = tan_res_friction_;
                if (!resamueff) resamueff = tan_friction_;
