@@ -313,6 +313,11 @@ namespace jmodels
 
     Double kna  = kn_ * s->area_;
     Double ksa  = ks_ * s->area_;
+
+    if (!s->state_) {
+        s->working_[Dqs] = 0.0;
+        s->working_[Dqt] = 0.0;        
+    }
     
     Double uel = 0.0;
     Double ucel_ = n_ * compression_ / kn_;
