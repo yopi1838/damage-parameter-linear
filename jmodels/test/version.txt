@@ -1,0 +1,6 @@
+#define MAJOR_VERSION     9
+#define UPDATE_VERSION    1
+#define REVISION_VERSION  1
+#define FILE_DESCRIPTION  "$classname$ Model library"
+#define PRODUCT_NAME      "$classname$ Model dynamic link library"
+#define PRODUCT_VERSION   100

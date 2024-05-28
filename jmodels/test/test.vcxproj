@@ -20,8 +20,8 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
-    <ProjectGuid>{52CF0CE8-4253-4CB4-9E2A-D7D0C3D0A0F5}</ProjectGuid>
-    <RootNamespace>example2017</RootNamespace>
+    <ProjectGuid>{7e5c65d3-ca9d-4c10-9c42-80088ac219a3}</ProjectGuid>
+    <RootNamespace>test</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -85,10 +85,10 @@
     <IntDir Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">out\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">false</LinkIncremental>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">jmodelyopi007</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">cmodelexample007_debug</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">jmodelyopi007_debug</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTestDebug|x64'">cmodelexampled007_debug</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">cmodeltest009</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTest|x64'">cmodeltest009_debug</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">cmodeltestd009</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='InternalTestDebug|x64'">cmodeltestd009_debug</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Midl>
@@ -96,7 +96,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\;$(ProjectDir)..\..\dependencies\interface;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\models\src;C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\interface;$(ProjectDir)..\..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;EXAMPLE_EXPORTS;MODELDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -106,21 +106,20 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <SDLCheck>true</SDLCheck>
-      <ConformanceMode>false</ConformanceMode>
+      <ConformanceMode>true</ConformanceMode>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <Cpp0xSupport>true</Cpp0xSupport>
-      <LanguageStandard>
-      </LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>base007.lib;jmodels007.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>base009.lib;conmodel009.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(TargetName).pdb</ProgramDatabaseFile>
       <SubSystem>Windows</SubSystem>
       <ImportLibrary>$(OutDir)$(TargetName).lib</ImportLibrary>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>C:\Users\yoktiovan\OneDrive - Delft University of Technology\01.Research\03.3DEC\8.ConstitutiveModel_Ver0.1_dplinear\jmodels\jmodelYopi\Debug;$(SolutionDir)..\..\..\binaries\Release\lib;$(SolutionDir)..\..\dependencies\\lib\exe64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\lib\exe64;$(ProjectDir)..\..\..\binaries\Release\lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='InternalTestDebug|x64'">
@@ -129,8 +128,8 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\;..\..\interface;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;EXAMPLE_EXPORTS;MODELDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\models\src;C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\interface;$(ProjectDir)..\..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;EXAMPLE_EXPORTS;MODELDEBUG;_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader>
@@ -138,21 +137,20 @@
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <ConformanceMode>false</ConformanceMode>
+      <ConformanceMode>true</ConformanceMode>
       <MultiProcessorCompilation>false</MultiProcessorCompilation>
       <Cpp0xSupport>true</Cpp0xSupport>
-      <LanguageStandard>
-      </LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>base007_debug.lib;conmodel007_debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>base009_debug.lib;conmodel009_debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(TargetName).pdb</ProgramDatabaseFile>
       <SubSystem>Windows</SubSystem>
       <ImportLibrary>$(OutDir)$(TargetName).lib</ImportLibrary>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>C:\Users\yoktiovan\OneDrive - Delft University of Technology\01.Research\03.3DEC\8.ConstitutiveModel_Ver0.1_dplinear\jmodels\jmodelYopi\Debug;$(SolutionDir)..\..\..\binaries\Debug\lib</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\lib\exe64;$(ProjectDir)..\..\..\binaries\Debug\lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -160,7 +158,7 @@
       <TargetEnvironment>X64</TargetEnvironment>
     </Midl>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\;$(ProjectDir)..\..\interface</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\models\src;C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\interface;$(ProjectDir)..\..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;EXAMPLE_EXPORTS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <PrecompiledHeader>
@@ -169,7 +167,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <SDLCheck>true</SDLCheck>
-      <ConformanceMode>false</ConformanceMode>
+      <ConformanceMode>true</ConformanceMode>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
@@ -181,7 +179,7 @@
       <Cpp0xSupport>true</Cpp0xSupport>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>base007.lib;jmodels007.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>base009.lib;conmodel009.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(TargetName).pdb</ProgramDatabaseFile>
@@ -190,7 +188,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <ImportLibrary>$(OutDir)$(TargetName).lib</ImportLibrary>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>C:\Users\yoktiovan\OneDrive - Delft University of Technology\01.Research\03.3DEC\8.ConstitutiveModel_Ver0.1_dplinear\jmodels\jmodelYopi\Debug;$(SolutionDir)..\..\..\binaries\Release\lib;$(SolutionDir)..\..\dependencies\lib\exe64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\lib\exe64;$(ProjectDir)..\..\..\binaries\Release\lib</AdditionalLibraryDirectories>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
@@ -199,8 +197,8 @@
       <TargetEnvironment>X64</TargetEnvironment>
     </Midl>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\..\;..\..\interface;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;EXAMPLE_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\models\src;C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\interface;$(ProjectDir)..\..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;EXAMPLE_EXPORTS;_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader>
       </PrecompiledHeader>
@@ -208,20 +206,19 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <SDLCheck>true</SDLCheck>
-      <ConformanceMode>false</ConformanceMode>
+      <ConformanceMode>true</ConformanceMode>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <LanguageStandard>
-      </LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <InterproceduralOptimization>SingleFile</InterproceduralOptimization>
       <OptimizeForWindowsApplication>true</OptimizeForWindowsApplication>
       <Cpp0xSupport>true</Cpp0xSupport>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>base007_debug.lib;conmodel007_debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>base009.lib;conmodel009.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(TargetName).pdb</ProgramDatabaseFile>
@@ -230,21 +227,21 @@
       <OptimizeReferences>true</OptimizeReferences>
       <ImportLibrary>$(OutDir)$(TargetName).lib</ImportLibrary>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalLibraryDirectories>C:\Users\yoktiovan\OneDrive - Delft University of Technology\01.Research\03.3DEC\8.ConstitutiveModel_Ver0.1_dplinear\jmodels\jmodelYopi\Debug;$(SolutionDir)..\..\..\binaries\Debug\lib</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\ProgramData\Itasca\ItascaSoftware910\PluginFiles\lib\exe64;$(ProjectDir)..\..\..\binaries\Release\lib</AdditionalLibraryDirectories>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="version.txt" />
+    <ClCompile Include="modeltest.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="modeltest.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="version.rc" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="jmodelYopi.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="jmodelYopi.h" />
+    <None Include="version.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
