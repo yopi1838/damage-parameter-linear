@@ -15,7 +15,7 @@ namespace jmodels
     virtual String         getStates() const;
     virtual Variant        getProperty(UInt index) const;
     virtual void           setProperty(UInt index,const Variant &p,UInt restoreVersion=0);
-    virtual JModelYopi *clone() const { return new JModelYopi(); }
+    virtual JModelYopi*clone() const { return new JModelYopi(); }
     virtual Double         getMaxNormalStiffness() const { return kn_; }
     virtual Double         getMaxShearStiffness() const { return ks_; }
     virtual void           copy(const JointModel *mod);
@@ -32,6 +32,7 @@ namespace jmodels
     virtual bool           supportsPropertyScaling() const { return false; }
   private:
     Double kn_;
+    Double kn_initial_; //Initial value of the normal stiffness
     Double ks_;
     Double cohesion_;
     Double compression_;
@@ -71,6 +72,11 @@ namespace jmodels
     Double friction_current_; //Current friction angle
     Double n_; //Ratio between the elastic displacement to compressive strength
     Double m_; //Ratio between ultimate displacement to displacement at peak compressive strength
+    Double uel_;
+    Double un_hist_comp;
+    Double peak_normal;
+    Double lambda;
+    Double ds_hist;
   };
 } // namespace models
 
