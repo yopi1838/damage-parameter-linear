@@ -34,6 +34,7 @@ namespace jmodels
     virtual bool           supportsPropertyScaling() const { return false; }
   private:
       double kn_;
+      double kn_initial_; //Initial value of the normal stiffness
       double ks_;
       double cohesion_;
       double compression_;
@@ -73,6 +74,10 @@ namespace jmodels
     double friction_current_; //Current friction angle
     double n_; //Ratio between the elastic displacement to compressive strength
     double m_; //Ratio between ultimate displacement to displacement at peak compressive strength
+    double uel_; //The elastic limit in tension
+    double un_hist_comp; // The maximum current displacement
+    double peak_normal; //The current peaks in compression   
+    double ds_hist; 
   };
 } // namespace models
 
