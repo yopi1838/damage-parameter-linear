@@ -89,7 +89,10 @@ namespace jmodels
     uel_(0),
     un_hist_comp(0),
     peak_normal(0),
-    ds_hist(0)
+    ds_hist(0),
+    un_ro(0),
+    fm_ro(0),
+    reloadFlag(0)
   {
   }
 
@@ -123,7 +126,8 @@ namespace jmodels
           "tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           "table-dt    ,table-ds ,"
           "tensile-disp-plastic    ,shear-disp-plastic ,"
-          "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal");
+          "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
+          "un_reloading,fm_reloading");
   }
 
   string JModelYopi::getStates() const
@@ -171,6 +175,8 @@ namespace jmodels
     case 34: return un_hist_comp;
     case 35: return peak_normal;    
     case 36: return ds_hist;
+    case 37: return un_ro;
+    case 38: return fm_ro;    
     }
     return 0.0;
   }
@@ -216,6 +222,8 @@ namespace jmodels
     case 34: un_hist_comp = prop.to<double>(); break;
     case 35: peak_normal = prop.to<double>(); break;    
     case 36: ds_hist = prop.to<double>(); break;
+    case 37: un_ro = prop.to<double>(); break;
+    case 38: fm_ro = prop.to<double>(); break;
     }
   }
 
@@ -265,6 +273,9 @@ namespace jmodels
     un_hist_comp = mm->un_hist_comp;
     peak_normal = mm->peak_normal;    
     ds_hist = mm->ds_hist;
+    un_ro = mm->un_ro;
+    fm_ro = mm->fm_ro;
+    reloadFlag = mm->reloadFlag;
   }
 
   void JModelYopi::initialize(uint32 dim,State *s)
@@ -306,7 +317,7 @@ namespace jmodels
     if (!Cn) Cn = 0.0;
     if (!Cnn) Cnn = 1.0;
     if (!Css) Css = 9.0;
-
+    
   }
 
   
@@ -354,7 +365,7 @@ namespace jmodels
     double un_current = s->normal_disp_ * (-1.0);
     //Calculate elastic limit
     double fel_limit = compression_ / 5.0;
-    double fpeak = compression_;
+    double fpeak = compression_;    
 
     //Define the hardening part of the compressive strength here
     if (sn_ <= 0.0 || un_current <= 0.0) {
@@ -365,24 +376,27 @@ namespace jmodels
     }
     else {
         kna = kn_comp_ * s->area_;
+        if (un_current >= un_hist_comp) {
+            un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes
+        }
         if (sn_ >= peak_normal && (s->state_ & comp_past) == 0.0) { // Loading
-            if (un_current + dn_ < uel_limit) {
-                un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
+            reloadFlag = 0;
+            //un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
+            if (un_current + dn_ < uel_limit) {                
                 //Elastic unloading
                 s->normal_force_inc_ = kna * dn_;
                 s->normal_force_ += s->normal_force_inc_;
                 fc_current = s->normal_force_ / s->area_;
             }
-            else if (!s->state_ || un_current + dn_ > uel_limit) {
-                un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes                
+            else if (!s->state_ || un_current + dn_ > uel_limit) {                          
                 s->normal_force_ = fel_limit * s->area_ + (fpeak * s->area_ - (fel_limit * s->area_)) * pow((2 * ((un_current + dn_) - uel_limit) / ucel_) - pow(((un_current + dn_) - uel_limit) / ucel_, 2), 0.5);
                 fc_current = s->normal_force_ / s->area_;
             }
         }
-        else {
+        else {            
             if (dn_ < 0.0) {
-                //Double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_),2) + 0.25 * (un_hist_comp / ucel_);
-                double un_plastic = 0.0;
+                double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_),2) + 0.25 * (un_hist_comp / ucel_);
+                double un_plastic = un_plastic_rat*ucel_;
                 double k1 = 1.5 * kn_comp_;
                 double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                 double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -393,14 +407,26 @@ namespace jmodels
                 double fm = peak_normal + (0.0 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
                 s->normal_force_ = fm * s->area_;
                 fc_current = fm;
+                fm_ro = fm;
+                un_ro = s->normal_disp_*(-1.0);
+                reloadFlag = 1;
             }
             else {
-                un_hist_comp = s->normal_disp_ * (-1.0);
-                //Elastic unloading
-                kna = kn_comp_ * s->area_;
-                s->normal_force_inc_ = kna * dn_;
-                s->normal_force_ += s->normal_force_inc_;
-                fc_current = s->normal_force_ / s->area_;
+                //un_hist_comp = s->normal_disp_ * (-1.0);                
+                if (reloadFlag == 1) {                    
+                    double beta = 1.0;                    
+                    double k_re = (beta * peak_normal - fm_ro) / (un_hist_comp - un_ro);
+                    double fm_re = fm_ro + k_re * (un_current - un_ro);
+                    s->normal_force_ = fm_re * s->area_;
+                    fc_current = fm_re;                                        
+                }
+                else {
+                    //Elastic unloading                    
+                    kna = kn_comp_ * s->area_;
+                    s->normal_force_inc_ = kna * dn_;
+                    s->normal_force_ += s->normal_force_inc_;
+                    fc_current = s->normal_force_ / s->area_;
+                }                
             }            
         } //unloading  
     }
@@ -426,6 +452,7 @@ namespace jmodels
     m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_ 
             + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2+ gamma_) - 0.25 * beta_ * (2-3* gamma_));
     double ucul_ = m_ * ucel_;
+
     //Define the softening on compressive strength
     if (s->state_) {
         if ((un_current > ucel_) && (un_current < ucul_)) {
@@ -603,7 +630,7 @@ namespace jmodels
     } // if (!tenflg)
 
     // store peak
-    if (dn_ >= 0.0 && un_current >= 0.0)
+    if (dn_ >= 0.0 && un_current >= un_hist_comp)
         peak_normal = s->normal_force_ / s->area_;
   }//run
 

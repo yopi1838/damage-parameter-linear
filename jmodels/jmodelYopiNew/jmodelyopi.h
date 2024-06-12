@@ -78,6 +78,9 @@ namespace jmodels
     double un_hist_comp; // The maximum current displacement
     double peak_normal; //The current peaks in compression   
     double ds_hist; 
+    double un_ro;//reloading displacement
+    double fm_ro; //reloading stress
+    uint32 reloadFlag; //reloading flag
   };
 } // namespace models
 
