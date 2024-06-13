@@ -404,7 +404,7 @@ namespace jmodels
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && ((s->state_ & comp_past) != 0.0 || plasFlag == 1)) { //unloading
                 if (sn_ > 0.0) {                    
-                    double k1 = 1.5 * kn_comp_;
+                    double k1 = 3 * kn_comp_;
                     double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
