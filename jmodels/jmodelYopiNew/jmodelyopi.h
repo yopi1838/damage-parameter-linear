@@ -82,6 +82,7 @@ namespace jmodels
     double fm_ro; //reloading stress
     double un_hist_ten;
     double reloadFlag; //reloading flag
+    uint32 plasFlag;    
   };
 } // namespace models
 
