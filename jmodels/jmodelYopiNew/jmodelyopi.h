@@ -83,6 +83,10 @@ namespace jmodels
     double un_hist_ten;
     double reloadFlag; //reloading flag
     uint32 plasFlag;    
+    /*double un_el_temp;
+    double f_el_temp;*/
+    double dc_hist;
+    uint32 pertFlag;
   };
 } // namespace models
 

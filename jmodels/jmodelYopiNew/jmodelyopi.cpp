@@ -308,7 +308,8 @@ namespace jmodels
     if (!G_c) 
         throw std::runtime_error("Internal error: Please input compressive fracture energy.");
     if (!n_) n_ = 1.0;
-
+    if (n_ < 1.0)
+        throw std::runtime_error("Internal error: peak_ratio (n) must be bigger than 1.0");
 
     if (G_I && iTension_d_)
         throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
@@ -360,7 +361,7 @@ namespace jmodels
     }
     
     double uel = 0.0;
-    double ucel_ = n_ * compression_ / kn_comp_;
+    double ucel_ = n_ * compression_ / kn_comp_;    
     
     // normal force
     double fn0 = s->normal_force_;
@@ -371,40 +372,57 @@ namespace jmodels
     //Calculate elastic limit
     double fel_limit = compression_ / 5.0;
     double fpeak = compression_;    
+    double ftemp = 0.0;    
 
     //Define the hardening part of the compressive strength here
-    if ((sn_ < 0.0) && un_current < 0.0) {
-        kna = kn_ * s->area_;
-        //tension
-        s->normal_force_inc_ = kna * dn_;
-        s->normal_force_ += s->normal_force_inc_;               
+    if (un_current < 0.0) {
+        if (dn_ >= 0.0) {
+            if (sn_>= 0.0) s->normal_force_ = 0.0;
+            else {
+                kna = kn_ * s->area_;
+                //tension
+                s->normal_force_inc_ = kna * dn_;
+                s->normal_force_ += s->normal_force_inc_;
+            }
+        }
+        else {
+            kna = kn_ * s->area_;
+            //tension
+            s->normal_force_inc_ = kna * dn_;
+            s->normal_force_ += s->normal_force_inc_;
+        }              
     }
     else {               
         if (un_current + dn_ >= un_hist_comp && reloadFlag == 0) {
             un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
         }        
-        if (sn_ >= peak_normal && (s->state_ & comp_past) == 0.0) { // Loading   
+        if ((sn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
             kna = kn_comp_ * s->area_;
-            reloadFlag = 0;
+            reloadFlag = 0;            
             //un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
-            if (un_current + dn_ < uel_limit) {                
+            if (un_current + dn_ <= uel_limit) {                
                 //Elastic unloading
                 s->normal_force_inc_ = kna * dn_;
                 s->normal_force_ += s->normal_force_inc_;
                 fc_current = s->normal_force_ / s->area_;
             }
-            else if (!s->state_ || un_current + dn_ >= uel_limit && sn_ < compression_) {                          
-                s->normal_force_ = fel_limit * s->area_ + (fpeak * s->area_ - (fel_limit * s->area_)) * pow((2 * ((un_current + dn_)- uel_limit) / ucel_) - pow(((un_current + dn_)- uel_limit) / ucel_, 2), 0.5);
+            else if (!s->state_ || sn_ < compression_) {
+                ftemp = fel_limit + (fpeak - (fel_limit)) * pow((2 * ((un_current+dn_)- uel_limit) / ucel_) - pow(((un_current+dn_)-uel_limit) / ucel_, 2), 0.5);
+                if (ftemp / (un_current+dn_) >= kn_comp_) s->normal_force_ += kna * dn_;
+                else s->normal_force_ = ftemp * s->area_;
                 fc_current = s->normal_force_ / s->area_;     
                 plasFlag = 1;
             }
-        }
-        else {      
+        }        
+        else {                 
             double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
             double un_plastic = un_plastic_rat * ucel_;
-            if (dn_ < 0.0 && ((s->state_ & comp_past) != 0.0 || plasFlag == 1)) { //unloading
-                if (sn_ > 0.0) {                    
-                    double k1 = 3 * kn_comp_;
+            if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
+                //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
+                if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
+                else pertFlag = 0;
+                if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
+                    double k1 = 1.5 * kn_comp_;
                     double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
@@ -416,18 +434,27 @@ namespace jmodels
                     fc_current = fm;
                     fm_ro = fm;
                     un_ro = s->normal_disp_ * (-1.0);
-                    reloadFlag = 1;
+                    reloadFlag = 1;                    
                 }
-                else {
+                else if (sn_ <= 0.0) {
                     fm_ro = 0.0;
                     kna = kn_ * s->area_;
                     //tension
                     s->normal_force_inc_ = kna * dn_;
                     s->normal_force_ += s->normal_force_inc_;
                 }
+                else {
+                    //Elastic unloading                    
+                    kna = kn_comp_ * s->area_;
+                    s->normal_force_inc_ = kna * dn_;
+                    s->normal_force_ += s->normal_force_inc_;
+                    fc_current = s->normal_force_ / s->area_;
+                    reloadFlag = 0;
+                }
+                             
             }
             else {
-                //un_hist_comp = s->normal_disp_ * (-1.0);                   
+                //un_hist_comp = s->normal_disp_ * (-1.0);                 
                 if (reloadFlag == 1) {
                     //recalculate un_hist_comp
                     if (un_current >= un_plastic) {
@@ -444,6 +471,7 @@ namespace jmodels
                     s->normal_force_inc_ = kna * dn_;
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
+                    reloadFlag = 0;
                 }                
             }         
         } //unloading  
@@ -472,27 +500,27 @@ namespace jmodels
     double ucul_ = m_ * ucel_;    
 
     //Define the softening on compressive strength
-    if (s->state_) {
-        if (dn_ >= 0.0 && sn_ > 0.0) {
-            if ((un_current > ucel_) && (un_current < ucul_)) {
-                dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
-            }
-            else if (un_current >= ucul_) {
-                double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-                dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
-                
-            }
-            else {
-                dc = 0.0;
-            }
-            s->normal_force_inc_ = 0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
-        }       
+    if (s->state_) {        
+        if ((un_current >= ucel_) && (un_current < ucul_)) {                
+            dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
+        }
+        else if (un_current >= ucul_) {
+            double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
+            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
+        }
+        else {
+            dc = 0.0;
+        }
+        if (dc >= dc_hist) dc_hist = dc;
+        else dc = dc_hist;
+        s->normal_force_inc_ = 0;
+        s->shear_force_inc_ = DVect3(0, 0, 0);
+
     }
     else {
         dc = 0.0;
     }
-    comp = compression_ * ((1 - dc)) * s->area_;
+    comp = (res_comp_ + (compression_ - res_comp_) * ((1 - dc))) * s->area_;
     fc_current = comp / s->area_;
     uel_ = tension_ / kn_initial_;
     //Define the softening tensile strength
@@ -585,12 +613,11 @@ namespace jmodels
     if (!tenflag && !compflag)
     {
         s->shear_force_inc_ = s->shear_disp_inc_ * -ksa;
-        s->shear_force_ += s->shear_force_inc_;
+        s->shear_force_ += s->shear_force_inc_;      
         
         //Because the normal force is already in negative anyway, we don't have to change the signs
         double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
         double fsm = s->shear_force_.mag();
-        double us_current = 0.0;
         double f2;
         if (fsmax < 0.0) fsmax = 0.0;
         if (s->state_) {
@@ -601,7 +628,7 @@ namespace jmodels
             if (G_II) {
                 double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
                 if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax / ks_))
-                {
+                {                  
                     s->working_[Dqs] = std::max((s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_)), s->working_[Dqs]);
                     ds = s->working_[Dqs];
                 }
@@ -625,11 +652,10 @@ namespace jmodels
             else 
             {
                sP_ = s->shear_disp_.mag() / usel;
-               ////Exponential Softening               
-               if (us_current <= s->shear_disp_.mag()) {
-                   us_current = s->shear_disp_.mag();
-                   if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-               }               
+               ////Exponential Softening                              
+               if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+               if (ds >= ds_hist) ds_hist = ds;
+               else ds = ds_hist;
                d_ts = dt + ds - dt * ds;
                double resamueff = tan_res_friction_;
                if (!resamueff) resamueff = tan_friction_;
@@ -646,18 +672,19 @@ namespace jmodels
             cc = cohesion_;
             friction_current_ = atan(tan_friction_) / dDegRad;
         }// if (state)
+
         //Check if slip
         if (f2 >= 0.0) 
         {
             shearCorrection(s, &IPlas, fsm, fsmax);
             if (s->normal_disp_ < 0.0) {
-               //Check f3
-               double f3;
-               f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-               if (f3 >= 0.0) {
-                   compCorrection(s, &IPlas, comp);
-               }
-            }
+                //Check f3
+                double f3;
+                f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+                if (f3 >= 0.0) {
+                    compCorrection(s, &IPlas, comp);
+                }
+            }                    
         }// if (f2)
         //Check compressive failure (compressive cap)
         if (s->normal_disp_ < 0.0) {
@@ -675,8 +702,8 @@ namespace jmodels
     } // if (!tenflg)
 
     // store peak
-    if (dn_ >= 0.0 && un_current+dn_ >= un_hist_comp)
-        peak_normal = s->normal_force_ / s->area_;         
+    if (dn_ >= 0.0 && sn_ >= peak_normal && un_current >= 0.0)
+        peak_normal = sn_;
   }//run
 
   void JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten) {
@@ -723,6 +750,7 @@ namespace jmodels
               s->normal_force_ += kn_ * s->area_ * dil * dusm;
           }// if (usm<zdd)
       }// if (dilation_)
+      
   }
 
   void JModelYopi::compCorrection(State *s, uint32 *IPlasticity, double &comp) {
@@ -757,14 +785,13 @@ namespace jmodels
         s->shear_force_ = DVect3(0, 0, 0);
         compFlag = true;
     }
-    if (dc == 1.0) {
+    if (dc >= 0.99) {
         //Full brittle failure
-        s->normal_force_ = 1e-14;
-        s->shear_force_ = DVect3(0.0, 0.0, 0.0);
+        s->normal_force_ = res_comp_ * s->area_;;
     }
     else {
         s->normal_force_ = X_yield;
-        s->shear_force_ *= Y_yield / y;
+        s->shear_force_ *= ratc;
     }
     s->normal_force_inc_ = 0.0;
     s->shear_force_inc_ = DVect3(0, 0, 0);
