@@ -93,7 +93,8 @@ namespace jmodels
     un_ro(0),
     fm_ro(0),
     reloadFlag(0),
-    un_hist_ten(0)
+    un_hist_ten(0),
+    utemp(0)
   {
   }
 
@@ -128,7 +129,7 @@ namespace jmodels
           "table-dt    ,table-ds ,"
           "tensile-disp-plastic    ,shear-disp-plastic ,"
           "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-          "un_reloading,fm_reloading,reloadFlag,un_hist_ten");
+          "un_reloading,fm_reloading,reloadFlag,un_hist_ten,utemp");
   }
 
   string JModelYopi::getStates() const
@@ -180,6 +181,7 @@ namespace jmodels
     case 38: return fm_ro;    
     case 39: return reloadFlag;
     case 40: return un_hist_ten;
+    case 41: return utemp;
     }
     return 0.0;
   }
@@ -373,7 +375,10 @@ namespace jmodels
     double fel_limit = compression_ / 5.0;
     double fpeak = compression_;    
     double ftemp = 0.0;    
-
+    if ((s->state_ & comp_past) == 0) {
+        utemp = s->normal_disp_ * (-1.0);
+        ftemp_comp = s->normal_force_ / s->area_;
+    }
     //Define the hardening part of the compressive strength here
     if (un_current < 0.0) {
         if (dn_ >= 0.0) {
@@ -422,8 +427,8 @@ namespace jmodels
                 if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
                 else pertFlag = 0;
                 if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
-                    double k1 = 1.5 * kn_comp_;
-                    double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
+                    double k1 = 3 * kn_comp_;
+                    double k2 = 1.5 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
                     double B3 = 2 - (k2 / Es) * (1 + B1);
@@ -491,26 +496,46 @@ namespace jmodels
     double ten;
     double comp = 0.0;
     uel = tension_ / kn_; //elastic limit on tension
-    double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
-    double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
-    double kappa_ = ucel_ * compression_;
-    double gamma_ = 2.0;
-    m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_ 
-            + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2+ gamma_) - 0.25 * beta_ * (2-3* gamma_));
-    double ucul_ = m_ * ucel_;    
+       
 
     //Define the softening on compressive strength
-    if (s->state_) {        
-        if ((un_current >= ucel_) && (un_current < ucul_)) {                
-            dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
+    if (s->state_) {                  
+        if ((s->state_ & comp_past) != 0 && utemp < ucel_) {
+            double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+            double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+            double kappa_ = ucel_ * compression_;
+            double gamma_ = 2.0;
+            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+                + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
+            double utemp_ul = m_ * utemp;
+            if ((un_current >= utemp) && (un_current < utemp_ul)) {
+                dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
+            }
+            else if (un_current >= utemp_ul) {
+                double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
+                dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
+            }
         }
-        else if (un_current >= ucul_) {
-            double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
+        else if ((s->state_ & comp_past) != 0 && (s->state_ & slip_past) == 0){
+            double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+            double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+            double kappa_ = ucel_ * compression_;
+            double gamma_ = 2.0;
+            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+                + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
+            double ucul_ = m_ * ucel_;
+            if ((un_current >= ucel_) && (un_current < ucul_)) {
+                dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
+            }
+            else if (un_current >= ucul_) {
+                double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
+                dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
+            }
+            else {
+                dc = 0.0;
+            }
         }
-        else {
-            dc = 0.0;
-        }
+        
         if (dc >= dc_hist) dc_hist = dc;
         else dc = dc_hist;
         s->normal_force_inc_ = 0;
