@@ -93,8 +93,7 @@ namespace jmodels
     un_ro(0),
     fm_ro(0),
     reloadFlag(0),
-    un_hist_ten(0),
-    utemp(0)
+    un_hist_ten(0)
   {
   }
 
@@ -129,7 +128,7 @@ namespace jmodels
           "table-dt    ,table-ds ,"
           "tensile-disp-plastic    ,shear-disp-plastic ,"
           "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-          "un_reloading,fm_reloading,reloadFlag,un_hist_ten,utemp");
+          "un_reloading,fm_reloading,reloadFlag,un_hist_ten");
   }
 
   string JModelYopi::getStates() const
@@ -181,7 +180,6 @@ namespace jmodels
     case 38: return fm_ro;    
     case 39: return reloadFlag;
     case 40: return un_hist_ten;
-    case 41: return utemp;
     }
     return 0.0;
   }
@@ -375,10 +373,7 @@ namespace jmodels
     double fel_limit = compression_ / 5.0;
     double fpeak = compression_;    
     double ftemp = 0.0;    
-    if ((s->state_ & comp_past) == 0) {
-        utemp = s->normal_disp_ * (-1.0);
-        ftemp_comp = s->normal_force_ / s->area_;
-    }
+
     //Define the hardening part of the compressive strength here
     if (un_current < 0.0) {
         if (dn_ >= 0.0) {

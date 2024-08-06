@@ -89,7 +89,6 @@ namespace jmodels
     uint32 pertFlag;
     double utemp;
     double ftemp_comp;
-    double dt_hist;
   };
 } // namespace models
 
