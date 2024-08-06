@@ -397,10 +397,6 @@ namespace jmodels
             un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
         }        
         if ((sn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
-            /*if ((s->state_ & tension_past) != 0.0) {
-                kn_comp_ *= 0.5;
-                uel_limit = compression_ / kn_comp_ / 5.0;                
-            }*/
             kna = kn_comp_ * s->area_;
             reloadFlag = 0;            
             //un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
@@ -413,21 +409,21 @@ namespace jmodels
             else if (!s->state_ || sn_ < compression_) {
                 ftemp = fel_limit + (fpeak - (fel_limit)) * pow((2 * ((un_current+dn_)- uel_limit) / ucel_) - pow(((un_current+dn_)-uel_limit) / ucel_, 2), 0.5);
                 if (ftemp / (un_current+dn_) >= kn_comp_) s->normal_force_ += kna * dn_;
-                else s->normal_force_ = ftemp * s->area_;                
+                else s->normal_force_ = ftemp * s->area_;
                 fc_current = s->normal_force_ / s->area_;     
                 plasFlag = 1;
             }
         }        
         else {                 
-            double un_plastic_rat = 0.5 * pow((un_hist_comp / ucel_), 2) + 0.55 * (un_hist_comp / ucel_);
+            double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                 if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
                 else pertFlag = 0;
-                if (sn_ > 0.0 && (pertFlag == 0|| dc > 0.0)) {
-                    double k1 = 1.5 * kn_comp_;
-                    double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
+                if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
+                    double k1 = 3 * kn_comp_;
+                    double k2 = 1.5 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
                     double B3 = 2 - (k2 / Es) * (1 + B1);
@@ -514,9 +510,8 @@ namespace jmodels
                 double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
                 dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
             }
-            comp = ftemp_comp * (1 - dc) * s->area_;
         }
-        else {
+        else if ((s->state_ & comp_past) != 0 && (s->state_ & slip_past) == 0){
             double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
             double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
             double kappa_ = ucel_ * compression_;
@@ -540,14 +535,12 @@ namespace jmodels
         else dc = dc_hist;
         s->normal_force_inc_ = 0;
         s->shear_force_inc_ = DVect3(0, 0, 0);
-        comp = compression_ * (1 - dc) * s->area_;
 
     }
     else {
         dc = 0.0;
-        comp = compression_ * (1 - dc) * s->area_;
     }
-    
+    comp = (res_comp_ + (compression_ - res_comp_) * ((1 - dc))) * s->area_;
     fc_current = comp / s->area_;
     uel_ = tension_ / kn_initial_;
     //Define the softening tensile strength
