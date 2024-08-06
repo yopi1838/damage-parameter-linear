@@ -558,76 +558,40 @@ namespace jmodels
     //Define the softening tensile strength
     if (s->state_)
     {
-        if (G_I) {
-            //if G_I is provided
-            //Calculate ultimate(bound) displacement
-            double u_ul = 2 * G_I / tension_;
-            un_current = s->normal_disp_;
-            if (un_current < u_ul && un_current >(tension_ / kn_))
-            {
-                dt = (s->normal_disp_ - (tension_ / kn_)) / (u_ul - (tension_ / kn_));
-            }
-            else if (s->normal_disp_ >= u_ul)
-            {
-                dt = 1.0;
+        bool sign = std::signbit(dn_);
+        if (un_current <= 0.0 && sn_<= 0.0) //check dt under tension
+        {
+            if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
+                //if table_dt is provided.
+                tP_ = un_hist_ten / (tension_ / kn_initial_);
+                ////Exponential Softening                
+                if (sign) {
+                    un_hist_ten -= dn_;
+                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+                    s->working_[Dqt] = dt;
+                }
+                d_ts = dt + ds - dt * ds;
             }
             else {
-                dt = 0.0;
+                //if table_dt is provided.
+                tP_ = s->normal_disp_ / (tension_ / kn_initial_);
+                ////Exponential Softening                
+                if (sign) {
+                    un_hist_ten = s->normal_disp_;
+                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+                    s->working_[Dqt] = dt;
+                }
+                d_ts = dt + ds - dt * ds;
+                if (un_current < (-tension_ / kn_))
+                {
+                    s->working_[Dqkn] = (1 - d_ts) * kn_;
+                    if (sign) {
+                        kn_ = (1 - d_ts) * kn_;
+                    }
+                }
             }
-            ////Exponential Softening
-            d_ts = dt + ds - dt * ds;
-            ten = -tension_ * (1 - d_ts + 1e-14) * s->area_;
-        }
-        else
-        {       
-            bool sign = std::signbit(dn_);
-            
-            if (un_current <= 0.0 && sn_<= 0.0)
-            {
-                if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) {
-                    //if table_dt is provided.
-                    tP_ = un_hist_ten / (tension_ / kn_initial_);
-                    ////Exponential Softening                
-                    if (sign) {
-                        un_hist_ten -= dn_;
-                        if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                        s->working_[Dqt] = dt;
-                    }
-                    d_ts = dt + ds - dt * ds;
-                }
-                else {
-                    //if table_dt is provided.
-                    tP_ = s->normal_disp_ / (tension_ / kn_initial_);
-                    ////Exponential Softening                
-                    if (sign) {
-                        un_hist_ten = s->normal_disp_;
-                        if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                        s->working_[Dqt] = dt;
-                    }
-                    d_ts = dt + ds - dt * ds;
-                    if (un_current < (-tension_ / kn_))
-                    {
-                        s->working_[Dqkn] = (1 - d_ts) * kn_;
-                        if (sign) {
-                            kn_ = (1 - d_ts) * kn_;
-                        }
-                    }
-                }
                 
-            }  
-            else if (reloadFlag == 1){
-                if (sn_ <= -tension_ * (1 - d_ts) && dn_ <= 0.0) {
-                    double un_temp = un_hist_ten;
-                    tP_ = un_temp / (tension_ / kn_initial_);
-                    if (dn_ < 0.0) {
-                        un_hist_ten -= dn_;
-                        if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                        s->working_[Dqt] = dt;
-                    }
-                    d_ts = dt + ds - dt * ds;
-                }
-            }                
-        }
+        }                
     }
     ten = -tension_ * ((1 - d_ts) + 1e-14) * s->area_;
 
