@@ -94,7 +94,8 @@ namespace jmodels
     fm_ro(0),
     reloadFlag(0),
     un_hist_ten(0),
-    utemp(0)
+    utemp(0),
+    dt_hist(0)
   {
   }
 
@@ -129,7 +130,7 @@ namespace jmodels
           "table-dt    ,table-ds ,"
           "tensile-disp-plastic    ,shear-disp-plastic ,"
           "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-          "un_reloading,fm_reloading,reloadFlag,un_hist_ten, utemp");
+          "un_reloading,fm_reloading,reloadFlag,un_hist_ten, utemp, dt_hist");
   }
 
   string JModelYopi::getStates() const
@@ -182,6 +183,7 @@ namespace jmodels
     case 39: return reloadFlag;
     case 40: return un_hist_ten;
     case 41: return utemp;
+    case 42: return dt_hist;
     }
     return 0.0;
   }
@@ -236,6 +238,7 @@ namespace jmodels
   static const uint32 Dqt = 1;
   static const uint32 Dqkn = 2;
   static const uint32 Dqc = 3;
+  static const uint32 D_un_hist = 4;
 
   void JModelYopi::copy(const JointModel *m)
   {
@@ -283,6 +286,7 @@ namespace jmodels
     reloadFlag = mm->reloadFlag;
     un_hist_ten = mm->un_hist_ten;
     utemp = mm->utemp;
+    dt_hist = mm->dt_hist;
   }
 
   void JModelYopi::initialize(uint32 dim,State *s)
@@ -357,7 +361,7 @@ namespace jmodels
         s->working_[Dqs] = 0.0;
         s->working_[Dqt] = 0.0;        
         s->working_[Dqkn] = 0.0;       
-        s->working_[Dqc] = 0.0;
+        s->working_[Dqc] = 0.0;        
     }
     
     double uel = 0.0;
@@ -372,7 +376,7 @@ namespace jmodels
     //Calculate elastic limit
     double fel_limit = compression_ / 5.0;
     double fpeak = compression_;    
-    double ftemp = 0.0;    
+    double ftemp = 0.0;        
 
     //Track the compressive force
     if ((s->state_ & comp_past) == 0 && un_current > 0.0) {
@@ -382,7 +386,11 @@ namespace jmodels
 
     //Define the hardening part of the compressive strength here
     if (un_current < 0.0) {
-        if (un_current + dn_ <= un_hist_ten) un_hist_ten = s->normal_disp_ * (-1.0);
+        if (un_current + dn_ <= un_hist_ten) 
+        { 
+            un_hist_ten = s->normal_disp_ * (-1.0); 
+            s->working_[D_un_hist] = un_hist_ten;
+        }
         if (dn_ >= 0.0) {
             if (sn_>= 0.0) s->normal_force_ = 0.0;
             else {
@@ -422,14 +430,14 @@ namespace jmodels
             }
         }        
         else {                 
-            double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
+            double un_plastic_rat = 0.5 * pow((un_hist_comp / ucel_), 2) + 0.55 * (un_hist_comp / ucel_);
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                 if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
                 else pertFlag = 0;
                 if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
-                    double k1 = 3 * kn_comp_;
+                    double k1 = 2 * kn_comp_;
                     double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
@@ -447,8 +455,10 @@ namespace jmodels
                     fm_ro = 0.0;
                     kna = kn_ * s->area_;
                     //tension
-                    s->normal_force_inc_ = kna * dn_;
-                    s->normal_force_ += s->normal_force_inc_;
+                    //s->normal_force_inc_ = kna * dn_;
+                    //s->normal_force_ += s->normal_force_inc_;
+                    s->normal_force_inc_ = 0;
+                    s->normal_force_ = 0;
                 }
                 else {
                     //Elastic unloading                    
@@ -507,7 +517,7 @@ namespace jmodels
 
     //Define the softening on compressive strength
     if (s->state_) {
-        if ((s->state_ & comp_past) != 0 && utemp < ucel_) {            
+        /*if ((s->state_ & comp_past) != 0 && utemp < ucel_) {            
             double utemp_ul = m_ * utemp;
             if ((un_current >= utemp) && (un_current < utemp_ul)) {
                 dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
@@ -518,7 +528,7 @@ namespace jmodels
             }
             comp = (res_comp_ + (ftemp_comp - res_comp_) * ((1 - dc))) * s->area_;
         }
-        else {
+        else {*/
             double ucul_ = m_ * ucel_;
             if ((un_current >= ucel_) && (un_current < ucul_)) {
                 dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
@@ -530,7 +540,7 @@ namespace jmodels
             else {
                 dc = 0.0;
             }
-        }
+        //}
 
         if (dc >= dc_hist) dc_hist = dc;
         else dc = dc_hist;
@@ -544,7 +554,7 @@ namespace jmodels
         comp = (res_comp_ + (compression_ - res_comp_) * ((1 - dc))) * s->area_;
     }    
     fc_current = comp / s->area_;
-    uel_ = tension_ / kn_initial_;
+    uel_ = tension_ / kn_initial_;    
     //Define the softening tensile strength
     if (s->state_)
     {
@@ -557,7 +567,7 @@ namespace jmodels
                 ////Exponential Softening                
                 if (sign) {                    
                     if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    s->working_[Dqt] = dt;
+                    if (dt_hist < dt) dt_hist = dt;
                     un_hist_ten += dn_;
                 }
                 d_ts = dt + ds - dt * ds;
@@ -568,7 +578,7 @@ namespace jmodels
                 ////Exponential Softening                
                 if (sign) {                    
                     if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    s->working_[Dqt] = dt;
+                    if (dt_hist < dt) dt_hist = dt;
                 }
                 d_ts = dt + ds - dt * ds;
                 if (un_current < (-tension_ / kn_))
@@ -582,11 +592,13 @@ namespace jmodels
                 
         }   
         /*else if (reloadFlag == 1) {
-            if (sn_ < -tension_ * (1 - d_ts) && dn_ < 0.0) {                    
-                tP_ = un_hist_ten * (-1.0) / (tension_ / kn_initial_);
+            if (sn_ <= -tension_ * (1 - d_ts) && dn_ < 0.0) {        
+                double un_temp = un_hist_ten * (-1.0);
+                tP_ = un_temp / (tension_ / kn_initial_);
                 if (dn_ < 0.0) {                    
                     if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    s->working_[Dqt] = dt;
+                    if (dt_hist < dt) dt_hist = dt;
+                    else dt = dt_hist;                
                     un_hist_ten += dn_;
                 }
                 d_ts = dt + ds - dt * ds;

@@ -88,7 +88,9 @@ namespace jmodels
     double dc_hist;
     uint32 pertFlag;
     double utemp; //temporary normal displacement to store the damaged compressive displacement.
-    double ftemp_comp;
+    double ftemp_comp;    
+    double dt_hist;
+    double un_hist_inc;
   };
 } // namespace models
 
