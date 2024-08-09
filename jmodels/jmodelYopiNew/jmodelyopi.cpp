@@ -430,7 +430,7 @@ namespace jmodels
             }
         }        
         else {                 
-            double un_plastic_rat = 0.5 * pow((un_hist_comp / ucel_), 2) + 0.55 * (un_hist_comp / ucel_);
+            double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
@@ -517,7 +517,7 @@ namespace jmodels
 
     //Define the softening on compressive strength
     if (s->state_) {
-        /*if ((s->state_ & comp_past) != 0 && utemp < ucel_) {            
+        if ((s->state_ & comp_past) != 0 && utemp < ucel_) {            
             double utemp_ul = m_ * utemp;
             if ((un_current >= utemp) && (un_current < utemp_ul)) {
                 dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
@@ -528,7 +528,7 @@ namespace jmodels
             }
             comp = (res_comp_ + (ftemp_comp - res_comp_) * ((1 - dc))) * s->area_;
         }
-        else {*/
+        else {
             double ucul_ = m_ * ucel_;
             if ((un_current >= ucel_) && (un_current < ucul_)) {
                 dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
@@ -540,7 +540,7 @@ namespace jmodels
             else {
                 dc = 0.0;
             }
-        //}
+        }
 
         if (dc >= dc_hist) dc_hist = dc;
         else dc = dc_hist;
