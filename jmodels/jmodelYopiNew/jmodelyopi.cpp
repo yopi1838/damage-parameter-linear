@@ -422,14 +422,14 @@ namespace jmodels
             }
         }        
         else {                 
-            double un_plastic_rat = 0.5 * pow((un_hist_comp / ucel_), 2) + 0.55 * (un_hist_comp / ucel_);
+            double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                 if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
                 else pertFlag = 0;
                 if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
-                    double k1 = 1.5 * kn_comp_;
+                    double k1 = 3 * kn_comp_;
                     double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
