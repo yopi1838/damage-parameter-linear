@@ -379,7 +379,7 @@ namespace jmodels
     double ftemp = 0.0;        
 
     //Track the compressive force
-    if ((s->state_ & comp_past) == 0 && un_current > 0.0) {
+    if ((s->state_ & comp_past) == 0) {
         utemp = s->normal_disp_ * (-1.0);
         ftemp_comp = s->normal_force_ / s->area_;
     }
@@ -526,7 +526,7 @@ namespace jmodels
                 double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
                 dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
             }
-            comp = (res_comp_ + (ftemp_comp - res_comp_) * ((1 - dc))) * s->area_;
+            comp = ftemp_comp * (1 - dc) * s->area_;
         }
         else {
             double ucul_ = m_ * ucel_;
@@ -540,14 +540,13 @@ namespace jmodels
             else {
                 dc = 0.0;
             }
+            comp = compression_ * (1 - dc) * s->area_;
         }
 
         if (dc >= dc_hist) dc_hist = dc;
         else dc = dc_hist;
         s->normal_force_inc_ = 0;
-        s->shear_force_inc_ = DVect3(0, 0, 0);
-        comp = (res_comp_ + (compression_ - res_comp_) * ((1 - dc))) * s->area_;
-
+        s->shear_force_inc_ = DVect3(0, 0, 0);        
     }
     else {
         dc = 0.0;
