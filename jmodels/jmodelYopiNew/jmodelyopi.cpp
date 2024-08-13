@@ -517,40 +517,26 @@ namespace jmodels
 
     //Define the softening on compressive strength
     if (s->state_) {
-        if ((s->state_ & comp_past) != 0 && utemp < ucel_) {            
-            double utemp_ul = m_ * utemp;
-            if ((un_current >= utemp) && (un_current < utemp_ul)) {
-                dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
-            }
-            else if (un_current >= utemp_ul) {
-                double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
-                dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
-            }
-            comp = ftemp_comp * (1 - dc) * s->area_;
+        double ucul_ = m_ * ucel_;
+        if ((un_current >= ucel_) && (un_current < ucul_)) {
+            dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
+        }
+        else if (un_current >= ucul_) {
+            double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
+            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
         }
         else {
-            double ucul_ = m_ * ucel_;
-            if ((un_current >= ucel_) && (un_current < ucul_)) {
-                dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
-            }
-            else if (un_current >= ucul_) {
-                double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-                dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
-            }
-            else {
-                dc = 0.0;
-            }
-            comp = compression_ * (1 - dc) * s->area_;
-        }
-
+            dc = 0.0;
+        }        
         if (dc >= dc_hist) dc_hist = dc;
         else dc = dc_hist;
         s->normal_force_inc_ = 0;
         s->shear_force_inc_ = DVect3(0, 0, 0);        
+        comp = compression_ * (1 - dc) * s->area_;
     }
     else {
         dc = 0.0;
-        comp = (res_comp_ + (compression_ - res_comp_) * ((1 - dc))) * s->area_;
+        comp = compression_ * (1 - dc) * s->area_;
     }    
     fc_current = comp / s->area_;
     uel_ = tension_ / kn_initial_;    
