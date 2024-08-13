@@ -329,8 +329,6 @@ namespace jmodels
     
   }
 
-  
-
   double JModelYopi::solveQuadratic(double a, double b, double c) {
       double x1;
       double x2;
@@ -444,7 +442,7 @@ namespace jmodels
                     double B3 = 2 - (k2 / Es) * (1 + B1);
                     double B2 = B1 - B3;
                     double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
-                    double fm = peak_normal + (0.0 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+                    double fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
                     s->normal_force_ = fm * s->area_;
                     fc_current = fm;
                     fm_ro = fm;
@@ -454,9 +452,9 @@ namespace jmodels
                 else if (sn_ <= 0.0) {
                     fm_ro = 0.0;
                     kna = kn_ * s->area_;
-                    //tension
-                    //s->normal_force_inc_ = kna * dn_;
-                    //s->normal_force_ += s->normal_force_inc_;
+                    ////tension
+                    /*s->normal_force_inc_ = kna * dn_;
+                    s->normal_force_ += s->normal_force_inc_;*/
                     s->normal_force_inc_ = 0;
                     s->normal_force_ = 0;
                 }
@@ -475,7 +473,7 @@ namespace jmodels
                 if (reloadFlag == 1) {
                     //recalculate un_hist_comp
                     if (un_current >= un_plastic) {
-                        double beta = 1.0;
+                        double beta = 1.0;                        
                         double k_re = (beta * peak_normal - fm_ro) / ((un_hist_comp) - un_ro);
                         double fm_re = fm_ro + k_re * (un_current - un_ro);
                         s->normal_force_ = fm_re * s->area_;
@@ -507,17 +505,17 @@ namespace jmodels
 
     double ten;
     double comp = 0.0;
-    uel = tension_ / kn_; //elastic limit on tension
-    double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
-    double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
-    double kappa_ = ucel_ * compression_;
-    double gamma_ = 2.0;
-    m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_ 
-            + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2+ gamma_) - 0.25 * beta_ * (2-3* gamma_));   
+    uel = tension_ / kn_; //elastic limit on tension    
 
     //Define the softening on compressive strength
     if (s->state_) {
-        if ((s->state_ & comp_past) != 0 && utemp < ucel_) {            
+        if ((s->state_ & comp_past) != 0 && utemp < ucel_) {
+            double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+            double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+            double kappa_ = ucel_ * compression_;
+            double gamma_ = 2.0;
+            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+                + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
             double utemp_ul = m_ * utemp;
             if ((un_current >= utemp) && (un_current < utemp_ul)) {
                 dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
@@ -526,9 +524,15 @@ namespace jmodels
                 double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
                 dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
             }
-            comp = (res_comp_ + (ftemp_comp - res_comp_) * ((1 - dc))) * s->area_;
+            //comp = ftemp_comp * (1 - dc) * s->area_;
         }
         else {
+            double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+            double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+            double kappa_ = ucel_ * compression_;
+            double gamma_ = 2.0;
+            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+                + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
             double ucul_ = m_ * ucel_;
             if ((un_current >= ucel_) && (un_current < ucul_)) {
                 dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
@@ -546,12 +550,12 @@ namespace jmodels
         else dc = dc_hist;
         s->normal_force_inc_ = 0;
         s->shear_force_inc_ = DVect3(0, 0, 0);
-        comp = (res_comp_ + (compression_ - res_comp_) * ((1 - dc))) * s->area_;
+        comp = compression_ * (1 - dc) * s->area_;
 
     }
     else {
         dc = 0.0;
-        comp = (res_comp_ + (compression_ - res_comp_) * ((1 - dc))) * s->area_;
+        comp = compression_ * (1 - dc) * s->area_;
     }    
     fc_current = comp / s->area_;
     uel_ = tension_ / kn_initial_;    

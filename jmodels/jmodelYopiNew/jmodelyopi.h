@@ -20,7 +20,7 @@ namespace jmodels
     virtual double         getMaxShearStiffness() const { return ks_; }
     virtual void           copy(const JointModel *mod);
     virtual void           run(uint32 dim,State *s); // If !isValid(dim) calls initialize(dim,s)
-    virtual void           initialize(uint32 dim,State *s); // calls setValid(dim)
+    virtual void           initialize(uint32 dim,State *s); // calls setValid(dim)    
     virtual double         solveQuadratic(double, double, double);
     virtual void           compCorrection(State* s, uint32*IPlasticity, double&comp);
     virtual void           shearCorrection(State* s, uint32* IPlasticity, double&fsm, double&fsmax);
