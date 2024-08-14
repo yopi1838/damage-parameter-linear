@@ -428,7 +428,7 @@ namespace jmodels
             }
         }        
         else {                 
-            double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
+            double un_plastic_rat = 0.55 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
@@ -509,24 +509,24 @@ namespace jmodels
 
     //Define the softening on compressive strength
     if (s->state_) {
-        if ((s->state_ & comp_past) != 0 && utemp < ucel_) {
-            double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
-            double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
-            double kappa_ = ucel_ * compression_;
-            double gamma_ = 2.0;
-            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
-                + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
-            double utemp_ul = m_ * utemp;
-            if ((un_current >= utemp) && (un_current < utemp_ul)) {
-                dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
-            }
-            else if (un_current >= utemp_ul) {
-                double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
-                dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
-            }
-            //comp = ftemp_comp * (1 - dc) * s->area_;
-        }
-        else {
+        //if ((s->state_ & comp_past) != 0 && utemp < ucel_) {
+        //    double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+        //    double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+        //    double kappa_ = ucel_ * compression_;
+        //    double gamma_ = 2.0;
+        //    m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+        //        + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
+        //    double utemp_ul = m_ * utemp;
+        //    if ((un_current >= utemp) && (un_current < utemp_ul)) {
+        //        dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
+        //    }
+        //    else if (un_current >= utemp_ul) {
+        //        double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
+        //        dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
+        //    }
+        //    //comp = ftemp_comp * (1 - dc) * s->area_;
+        //}
+        //else {
             double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
             double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
             double kappa_ = ucel_ * compression_;
@@ -544,7 +544,7 @@ namespace jmodels
             else {
                 dc = 0.0;
             }
-        }
+        //}
 
         if (dc >= dc_hist) dc_hist = dc;
         else dc = dc_hist;
@@ -621,6 +621,19 @@ namespace jmodels
         tensionCorrection(s, &IPlas, ten);
     }
     bool compflag = false;
+
+    if (dc >= 0.0) {
+        //Calculate max shear stress            
+        double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;        
+        double usel = tmax / ks_;
+        sP_ = s->shear_disp_.mag() / usel;
+        ////Exponential Softening                              
+        if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+        if (ds >= ds_hist) ds_hist = ds;
+        else ds = ds_hist;
+        d_ts = dt + ds - dt * ds;
+    }
+
     // shear force
     if (!tenflag && !compflag)
     {
@@ -632,52 +645,26 @@ namespace jmodels
         double fsm = s->shear_force_.mag();
         double f2;
         if (fsmax < 0.0) fsmax = 0.0;
+        //If conditionals for pure shear region
         if (s->state_) {
             //Calculate max shear stress            
             double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-            double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
-            double usel = tmax / ks_;
-            if (G_II) {
-                double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
-                if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax / ks_))
-                {                  
-                    s->working_[Dqs] = std::max((s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_)), s->working_[Dqs]);
-                    ds = s->working_[Dqs];
-                }
-                else if (s->shear_disp_.mag() >= u_uls)
-                {
-                    ds = 1.0;
-                }
-                else {
-                    ds = 0.0;
-                }
-                d_ts = dt + ds - dt * ds;
-                double resamueff = tan_res_friction_;
-                if (!resamueff) resamueff = tan_friction_;
-                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
-                double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
-                friction_current_ = atan(tan_friction_c) / dDegRad;
-                double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-                fsmax = tc;
-                f2 = fsm - tc;
-            }
-            else 
-            {
-               sP_ = s->shear_disp_.mag() / usel;
-               ////Exponential Softening                              
-               if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-               if (ds >= ds_hist) ds_hist = ds;
-               else ds = ds_hist;
-               d_ts = dt + ds - dt * ds;
-               double resamueff = tan_res_friction_;
-               if (!resamueff) resamueff = tan_friction_;
-               cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
-               double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
-               friction_current_ = atan(tan_friction_c) / dDegRad;
-               double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-               fsmax = tc;
-               f2 = fsm - tc;
-            }
+            //double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
+            double usel = tmax / ks_;            
+            sP_ = s->shear_disp_.mag() / usel;
+            ////Exponential Softening                              
+            if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+            if (ds >= ds_hist) ds_hist = ds;
+            else ds = ds_hist;
+            d_ts = dt + ds - dt * ds;
+            double resamueff = tan_res_friction_;
+            if (!resamueff) resamueff = tan_friction_;
+            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
+            double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+            friction_current_ = atan(tan_friction_c) / dDegRad;
+            double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+            fsmax = tc;
+            f2 = fsm - tc;
         }
         else {
             f2 = fsm - fsmax;
@@ -705,7 +692,7 @@ namespace jmodels
             //If it violates the yield criterion for compression
             if (f3 >= 0.0)
             {
-                compCorrection(s, &IPlas, comp);
+                compCorrection(s, &IPlas, comp);                
                 if (f2 >= 0.0) {
                     shearCorrection(s, &IPlas, fsm, fsmax);
                 }
