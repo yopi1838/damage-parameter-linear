@@ -88,14 +88,16 @@ namespace jmodels
     R_yield(0),
     uel_(0),
     un_hist_comp(0),
-    peak_normal(0),
-    ds_hist(0),
+    peak_normal(0),    
     un_ro(0),
     fm_ro(0),
     reloadFlag(0),
-    un_hist_ten(0),
-    utemp(0),
-    dt_hist(0)
+    un_hist_ten(0),    
+    dt_hist(0),
+    dc_hist(0),
+    ds_hist(0),
+    plasFlag(0),
+    pertFlag(0)
   {
   }
 
@@ -129,8 +131,8 @@ namespace jmodels
           "tension-residual    , G_I   , G_II  ,dt ,ds ,dc ,d_ts   ,cc ,"
           "table-dt    ,table-ds ,"
           "tensile-disp-plastic    ,shear-disp-plastic ,"
-          "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-          "un_reloading,fm_reloading,reloadFlag,un_hist_ten, utemp, dt_hist");
+          "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,   uel,    un_hist_comp,   peak_normal,"
+          "un_reloading,   fm_reloading,   reloadFlag, un_hist_ten");
   }
 
   string JModelYopi::getStates() const
@@ -176,14 +178,11 @@ namespace jmodels
     case 32: return m_;
     case 33: return uel_;
     case 34: return un_hist_comp;
-    case 35: return peak_normal;    
-    case 36: return ds_hist;
-    case 37: return un_ro;
-    case 38: return fm_ro;    
-    case 39: return reloadFlag;
-    case 40: return un_hist_ten;
-    case 41: return utemp;
-    case 42: return dt_hist;
+    case 35: return peak_normal;        
+    case 36: return un_ro;
+    case 37: return fm_ro;    
+    case 38: return reloadFlag;
+    case 39: return un_hist_ten;        
     }
     return 0.0;
   }
@@ -227,10 +226,11 @@ namespace jmodels
     case 32: m_ = prop.to<double>(); break;
     case 33: uel_ = prop.to<double>(); break;
     case 34: un_hist_comp = prop.to<double>(); break;
-    case 35: peak_normal = prop.to<double>(); break;    
-    case 36: ds_hist = prop.to<double>(); break;
-    case 37: un_ro = prop.to<double>(); break;
-    case 38: fm_ro = prop.to<double>(); break;
+    case 35: peak_normal = prop.to<double>(); break;        
+    case 36: un_ro = prop.to<double>(); break;
+    case 37: fm_ro = prop.to<double>(); break;
+    case 38: reloadFlag = prop.to<double>(); break;
+    case 39: un_hist_ten = prop.to<double>(); break;
     }
   }
 
@@ -279,14 +279,16 @@ namespace jmodels
     m_ = mm->m_;
     uel_ = mm->uel_;
     un_hist_comp = mm->un_hist_comp;
-    peak_normal = mm->peak_normal;    
-    ds_hist = mm->ds_hist;
+    peak_normal = mm->peak_normal;        
     un_ro = mm->un_ro;
     fm_ro = mm->fm_ro;
     reloadFlag = mm->reloadFlag;
-    un_hist_ten = mm->un_hist_ten;
-    utemp = mm->utemp;
+    un_hist_ten = mm->un_hist_ten;    
     dt_hist = mm->dt_hist;
+    ds_hist = mm->ds_hist;
+    dc_hist = mm->dc_hist;
+    plasFlag = mm->plasFlag;
+    pertFlag = mm->pertFlag;
   }
 
   void JModelYopi::initialize(uint32 dim,State *s)
@@ -298,8 +300,6 @@ namespace jmodels
 
     //Initialize parameter for the compressive cap
     fc_current = 0.0;
-    R_yield = 0.0;
-    R_violates = 0.0;
 
     //Initialize the null pointer
     iTension_d_ = iShear_d_ = iHard_d_ =  nullptr;
@@ -374,13 +374,7 @@ namespace jmodels
     //Calculate elastic limit
     double fel_limit = compression_ / 5.0;
     double fpeak = compression_;    
-    double ftemp = 0.0;        
-
-    //Track the compressive force
-    if ((s->state_ & comp_past) == 0 && un_current > 0.0) {
-        utemp = s->normal_disp_ * (-1.0);
-        ftemp_comp = s->normal_force_ / s->area_;
-    }
+    double ftemp = 0.0;            
 
     //Define the hardening part of the compressive strength here
     if (un_current < 0.0) {
@@ -464,7 +458,6 @@ namespace jmodels
                     s->normal_force_inc_ = kna * dn_;
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
-                    reloadFlag = 0;
                 }
                              
             }
@@ -509,42 +502,23 @@ namespace jmodels
 
     //Define the softening on compressive strength
     if (s->state_) {
-        //if ((s->state_ & comp_past) != 0 && utemp < ucel_) {
-        //    double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
-        //    double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
-        //    double kappa_ = ucel_ * compression_;
-        //    double gamma_ = 2.0;
-        //    m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
-        //        + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
-        //    double utemp_ul = m_ * utemp;
-        //    if ((un_current >= utemp) && (un_current < utemp_ul)) {
-        //        dc = (1 - (mid_comp / ftemp_comp)) * pow((un_current - utemp) / (utemp_ul - utemp), 2);
-        //    }
-        //    else if (un_current >= utemp_ul) {
-        //        double alpha = 2 * (mid_comp - ftemp_comp) / (utemp_ul - utemp);
-        //        dc = 1 - (res_comp_ / ftemp_comp) - ((mid_comp - res_comp_) / ftemp_comp) * exp(alpha * (un_current - utemp_ul) / (mid_comp - res_comp_));
-        //    }
-        //    //comp = ftemp_comp * (1 - dc) * s->area_;
-        //}
-        //else {
-            double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
-            double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
-            double kappa_ = ucel_ * compression_;
-            double gamma_ = 2.0;
-            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
-                + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
-            double ucul_ = m_ * ucel_;
-            if ((un_current >= ucel_) && (un_current < ucul_)) {
-                dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
-            }
-            else if (un_current >= ucul_) {
-                double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-                dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
-            }
-            else {
-                dc = 0.0;
-            }
-        //}
+        double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+        double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+        double kappa_ = ucel_ * compression_;
+        double gamma_ = 2.0;
+        m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+            + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
+        double ucul_ = m_ * ucel_;
+        if ((un_current >= ucel_) && (un_current < ucul_)) {
+            dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
+        }
+        else if (un_current >= ucul_) {
+            double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
+            dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
+        }
+        else {
+            dc = 0.0;
+        }
 
         if (dc >= dc_hist) dc_hist = dc;
         else dc = dc_hist;
@@ -562,52 +536,23 @@ namespace jmodels
     //Define the softening tensile strength
     if (s->state_)
     {
-        bool sign = std::signbit(dn_);
-        if (un_current <= 0.0 && sn_<= 0.0) //check dt under tension
+        bool sign = std::signbit(dn_);            
+        //if table_dt is provided.
+        tP_ = s->normal_disp_ / (tension_ / kn_initial_);
+        ////Exponential Softening                
+        if (sign) {                    
+            if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
+            if (dt >= dt_hist) dt_hist = dt;
+            else dt = dt_hist;
+        }      
+        d_ts = dt + ds - dt * ds;
+        if (un_current < (-tension_ / kn_initial_))
         {
-            if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
-                //if table_dt is provided.
-                tP_ = un_hist_ten*(-1.0) / (tension_ / kn_initial_);
-                ////Exponential Softening                
-                if (sign) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    if (dt_hist < dt) dt_hist = dt;
-                    un_hist_ten += dn_;
-                }
-                d_ts = dt + ds - dt * ds;
+            s->working_[Dqkn] = (1 - d_ts) * kn_;
+            if (sign) {
+                kn_ *= (1 - d_ts);
             }
-            else {
-                //if table_dt is provided.
-                tP_ = s->normal_disp_ / (tension_ / kn_initial_);
-                ////Exponential Softening                
-                if (sign) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    if (dt_hist < dt) dt_hist = dt;
-                }
-                d_ts = dt + ds - dt * ds;
-                if (un_current < (-tension_ / kn_))
-                {
-                    s->working_[Dqkn] = (1 - d_ts) * kn_;
-                    if (sign) {
-                        kn_ = (1 - d_ts) * kn_;
-                    }
-                }
-            }
-                
-        }   
-        /*else if (reloadFlag == 1) {
-            if (sn_ <= -tension_ * (1 - d_ts) && dn_ < 0.0) {        
-                double un_temp = un_hist_ten * (-1.0);
-                tP_ = un_temp / (tension_ / kn_initial_);
-                if (dn_ < 0.0) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    if (dt_hist < dt) dt_hist = dt;
-                    else dt = dt_hist;                
-                    un_hist_ten += dn_;
-                }
-                d_ts = dt + ds - dt * ds;
-            }
-        }*/
+        }        
     }
     ten = -tension_ * ((1 - d_ts) + 1e-14) * s->area_;
 
@@ -621,18 +566,6 @@ namespace jmodels
         tensionCorrection(s, &IPlas, ten);
     }
     bool compflag = false;
-
-    if (dc >= 0.0) {
-        //Calculate max shear stress            
-        double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;        
-        double usel = tmax / ks_;
-        sP_ = s->shear_disp_.mag() / usel;
-        ////Exponential Softening                              
-        if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-        if (ds >= ds_hist) ds_hist = ds;
-        else ds = ds_hist;
-        d_ts = dt + ds - dt * ds;
-    }
 
     // shear force
     if (!tenflag && !compflag)
@@ -693,9 +626,6 @@ namespace jmodels
             if (f3 >= 0.0)
             {
                 compCorrection(s, &IPlas, comp);                
-                if (f2 >= 0.0) {
-                    shearCorrection(s, &IPlas, fsm, fsmax);
-                }
             }
         }//s->normal_disp < 0.0
     } // if (!tenflg)

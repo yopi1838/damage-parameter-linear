@@ -83,14 +83,9 @@ namespace jmodels
     double un_hist_ten;
     double reloadFlag; //reloading flag
     uint32 plasFlag;    
-    /*double un_el_temp;
-    double f_el_temp;*/
     double dc_hist;
-    uint32 pertFlag;
-    double utemp; //temporary normal displacement to store the damaged compressive displacement.
-    double ftemp_comp;    
-    double dt_hist;
-    double un_hist_inc;
+    uint32 pertFlag;      
+    double dt_hist;    
   };
 } // namespace models
 
