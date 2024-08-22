@@ -308,6 +308,10 @@ namespace jmodels
     if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
     if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
 
+    //Initialize parameter for the compressive cap
+    fc_current = 0.0;
+    R_yield = 0.0;
+    R_violates = 0.0;
   
     if (!G_c) 
         throw std::runtime_error("Internal error: Please input compressive fracture energy.");
@@ -428,7 +432,7 @@ namespace jmodels
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                 if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
                 else pertFlag = 0;
-                if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
+                if (sn_ > 0.0 && (pertFlag == 0)) {
                     double k1 = 2 * kn_comp_;
                     double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -542,15 +546,14 @@ namespace jmodels
         ////Exponential Softening                
         if (sign) {                    
             if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-            if (dt >= dt_hist) dt_hist = dt;
-            else dt = dt_hist;
+            if (dt_hist < dt) dt_hist = dt;
         }      
         d_ts = dt + ds - dt * ds;
-        if (un_current < (-tension_ / kn_initial_))
+        if (un_current < (-tension_ / kn_))
         {
             s->working_[Dqkn] = (1 - d_ts) * kn_;
             if (sign) {
-                kn_ *= (1 - d_ts);
+                kn_ = (1 - d_ts) * kn_;
             }
         }        
     }
@@ -609,14 +612,14 @@ namespace jmodels
         if (f2 >= 0.0) 
         {
             shearCorrection(s, &IPlas, fsm, fsmax);
-            if (s->normal_disp_ < 0.0) {
-                //Check f3
-                double f3;
-                f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-                if (f3 >= 0.0) {
-                    compCorrection(s, &IPlas, comp);
-                }
-            }                    
+            //if (s->normal_disp_ < 0.0) {
+            //    //Check f3
+            //    double f3;
+            //    f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+            //    if (f3 >= 0.0) {
+            //        compCorrection(s, &IPlas, comp);
+            //    }
+            //}                    
         }// if (f2)
         //Check compressive failure (compressive cap)
         if (s->normal_disp_ < 0.0) {
@@ -688,7 +691,7 @@ namespace jmodels
     double X_yield;
     double Y_yield;
     double x;
-    double ratc;
+    double ratc = 0.0;
     double y;
     double a;
     double b;
@@ -709,7 +712,7 @@ namespace jmodels
     Y_yield = gradient * X_yield;
     R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
     //Correct the normal and shear forces to the yield surface
-    ratc = R_yield / R_violates;
+    if (R_violates) ratc = R_yield / R_violates;    
     if (!s->normal_force_) {
         s->shear_force_ = DVect3(0, 0, 0);
         compFlag = true;
