@@ -436,7 +436,7 @@ namespace jmodels
                     double fm = 0.0;
                     fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
                     if (fm < 0.0) fm = 0.0;
-                    s->normal_force_ = fm * s->area_;
+                    s->normal_force_ = fm * s->area_;                    
                     fc_current = fm;
                     reloadFlag = 1;  
                 }            
@@ -543,6 +543,7 @@ namespace jmodels
                 if (sign) {                    
                     if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
                     if (dt_hist < dt) dt_hist = dt;
+                    else dt = dt_hist;
                     un_hist_ten += dn_;
                 }
                 d_ts = dt + ds - dt * ds;
@@ -554,6 +555,7 @@ namespace jmodels
                 if (sign) {                    
                     if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
                     if (dt_hist < dt) dt_hist = dt;
+                    else dt = dt_hist;
                 }
                 d_ts = dt + ds - dt * ds;
                 if (un_current < (-tension_ / kn_))
