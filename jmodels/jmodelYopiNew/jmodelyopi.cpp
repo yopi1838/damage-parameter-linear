@@ -229,6 +229,9 @@ namespace jmodels
     case 36: ds_hist = prop.to<double>(); break;
     case 37: un_ro = prop.to<double>(); break;
     case 38: fm_ro = prop.to<double>(); break;
+    case 39: reloadFlag = prop.to<double>(); break;
+    case 40: un_hist_ten = prop.to<double>(); break;
+    case 41: dt_hist = prop.to<double>(); break;
     }
   }
 
@@ -541,11 +544,11 @@ namespace jmodels
                 tP_ = un_hist_ten*(-1.0) / (tension_ / kn_initial_);
                 ////Exponential Softening                
                 if (sign) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    if (dt_hist < dt) dt_hist = dt;
-                    else dt = dt_hist;
+                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);                    
                     un_hist_ten += dn_;
                 }
+                if (dt_hist < dt) dt_hist = dt;
+                else dt = dt_hist;
                 d_ts = dt + ds - dt * ds;
             }
             else {
@@ -553,10 +556,10 @@ namespace jmodels
                 tP_ = s->normal_disp_ / (tension_ / kn_initial_);
                 ////Exponential Softening                
                 if (sign) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    if (dt_hist < dt) dt_hist = dt;
-                    else dt = dt_hist;
+                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);                    
                 }
+                if (dt_hist < dt) dt_hist = dt;
+                else dt = dt_hist;
                 d_ts = dt + ds - dt * ds;
                 if (un_current < (-tension_ / kn_))
                 {
