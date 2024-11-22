@@ -94,7 +94,10 @@ namespace jmodels
     fm_ro(0),
     reloadFlag(0),
     un_hist_ten(0),
-    dt_hist(0)
+    dt_hist(0),
+    dc_hist(0),
+    pertFlag(0),
+    plasFlag(0)
   {
   }
 
@@ -537,53 +540,34 @@ namespace jmodels
     if (s->state_)
     {
         bool sign = std::signbit(dn_);
-        if (un_current <= 0.0 && sn_<= 0.0) //check dt under tension
+        if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
+            //if table_dt is provided.
+            tP_ = un_hist_ten*(-1.0) / (tension_ / kn_initial_);                      
+            ////Exponential Softening                
+            if (sign) {
+                if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                else if (G_I) dt = 1.0 - exp(-tension_ / G_I * (un_hist_ten * (-1.0) - (tension_ / kn_initial_))); //Exponential Softening
+                un_hist_ten += dn_;
+            }
+            d_ts = dt + ds - dt * ds;
+        }
+        else {
+            tP_ = s->normal_disp_ / (tension_ / kn_initial_);
+            if (sign) {                    
+                if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                else if (G_I) dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
+            }           
+        }
+        if (dt_hist < dt) dt_hist = dt;
+        else dt = dt_hist;
+        d_ts = dt + ds - dt * ds;
+        if (un_current < (-tension_ / kn_))
         {
-            if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
-                //if table_dt is provided.
-                tP_ = un_hist_ten*(-1.0) / (tension_ / kn_initial_);
-                ////Exponential Softening                
-                if (sign) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);                    
-                    un_hist_ten += dn_;
-                }
-                if (dt_hist < dt) dt_hist = dt;
-                else dt = dt_hist;
-                d_ts = dt + ds - dt * ds;
+            s->working_[Dqkn] = (1 - d_ts) * kn_;
+            if (sign) {
+                kn_ = (1 - d_ts) * kn_;
             }
-            else {
-                //if table_dt is provided.
-                tP_ = s->normal_disp_ / (tension_ / kn_initial_);
-                ////Exponential Softening                
-                if (sign) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);                    
-                }
-                if (dt_hist < dt) dt_hist = dt;
-                else dt = dt_hist;
-                d_ts = dt + ds - dt * ds;
-                if (un_current < (-tension_ / kn_))
-                {
-                    s->working_[Dqkn] = (1 - d_ts) * kn_;
-                    if (sign) {
-                        kn_ = (1 - d_ts) * kn_;
-                    }
-                }
-            }
-                
-        }   
-        /*else if (reloadFlag == 1) {
-            if (sn_ <= -tension_ * (1 - d_ts) && dn_ < 0.0) {        
-                double un_temp = un_hist_ten * (-1.0);
-                tP_ = un_temp / (tension_ / kn_initial_);
-                if (dn_ < 0.0) {                    
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_);
-                    if (dt_hist < dt) dt_hist = dt;
-                    else dt = dt_hist;                
-                    un_hist_ten += dn_;
-                }
-                d_ts = dt + ds - dt * ds;
-            }
-        }*/
+        }
     }
     ten = -tension_ * ((1 - d_ts) + 1e-14) * s->area_;
 
@@ -610,51 +594,24 @@ namespace jmodels
         if (fsmax < 0.0) fsmax = 0.0;
         if (s->state_) {
             //Calculate max shear stress            
-            double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-            double tres = res_cohesion_ + tan_res_friction_ * s->normal_force_ / s->area_;
+            double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;            
             double usel = tmax / ks_;
-            if (G_II) {
-                double u_uls = 2 * G_II / (tmax - tres) + (tres / ks_);
-                if (s->shear_disp_.mag() < u_uls && s->shear_disp_.mag() >= (tmax / ks_))
-                {                  
-                    s->working_[Dqs] = std::max((s->shear_disp_.mag() - (tmax / ks_)) / (u_uls - (tmax / ks_)), s->working_[Dqs]);
-                    ds = s->working_[Dqs];
-                }
-                else if (s->shear_disp_.mag() >= u_uls)
-                {
-                    ds = 1.0;
-                }
-                else {
-                    ds = 0.0;
-                }
-                d_ts = dt + ds - dt * ds;
-                double resamueff = tan_res_friction_;
-                if (!resamueff) resamueff = tan_friction_;
-                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
-                double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
-                friction_current_ = atan(tan_friction_c) / dDegRad;
-                double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-                fsmax = tc;
-                f2 = fsm - tc;
-            }
-            else 
-            {
-               sP_ = s->shear_disp_.mag() / usel;
-               ////Exponential Softening                              
-               if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-               if (ds >= ds_hist) ds_hist = ds;
-               else ds = ds_hist;
-               d_ts = dt + ds - dt * ds;
-               double resamueff = tan_res_friction_;
-               if (!resamueff) resamueff = tan_friction_;
-               cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
-               double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
-               friction_current_ = atan(tan_friction_c) / dDegRad;
-               double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-               fsmax = tc;
-               f2 = fsm - tc;
-            }
-        }
+            sP_ = s->shear_disp_.mag() / usel;
+            ////Exponential Softening                              
+            if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
+            else if (G_II) ds = 1 - exp(-cohesion_/G_II * (s->shear_disp_.mag() - usel));
+            if (ds >= ds_hist) ds_hist = ds;
+            else ds = ds_hist;
+            d_ts = dt + ds - dt * ds;
+            double resamueff = tan_res_friction_;
+            if (!resamueff) resamueff = tan_friction_;
+            cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
+            double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+            friction_current_ = atan(tan_friction_c) / dDegRad;
+            double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+            fsmax = tc;
+            f2 = fsm - tc;
+        }        
         else {
             f2 = fsm - fsmax;
             cc = cohesion_;
