@@ -606,7 +606,7 @@ namespace jmodels
             double resamueff = tan_res_friction_;
             if (!resamueff) resamueff = tan_friction_;
             cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
-            double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - d_ts);
+            double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1-((cohesion_ - cc)/(cohesion_-res_cohesion_)));
             friction_current_ = atan(tan_friction_c) / dDegRad;
             double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
             fsmax = tc;
