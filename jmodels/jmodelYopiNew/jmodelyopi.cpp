@@ -429,7 +429,7 @@ namespace jmodels
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
+                if (un_current + dn_ >= un_hist_comp * .98) pertFlag = 2;
                 else pertFlag = 0;
                 if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
                     double k1 = 2 * kn_comp_;
@@ -475,6 +475,14 @@ namespace jmodels
                         double fm_re = fm_ro + k_re * (un_current - un_ro);
                         s->normal_force_ = fm_re * s->area_;
                         fc_current = fm_re;
+                    }
+                    else {
+                        //Elastic unloading                    
+                        kna = kn_comp_ * s->area_;
+                        s->normal_force_inc_ = kna * dn_;
+                        s->normal_force_ += s->normal_force_inc_;
+                        fc_current = s->normal_force_ / s->area_;
+                        reloadFlag = 0;
                     }
                 }
                 else {
@@ -569,7 +577,7 @@ namespace jmodels
             }
         }
     }
-    ten = -tension_ * ((1 - d_ts) + 1e-14) * s->area_;
+    ten = -(res_tension_ + (tension_ - res_tension_)  * ((1 - d_ts) + 1e-14)) * s->area_;
 
     // check tensile failure
     bool tenflag = false;

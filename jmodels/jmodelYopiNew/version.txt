@@ -1,5 +1,5 @@
 #define MAJOR_VERSION     9
-#define UPDATE_VERSION    2
+#define UPDATE_VERSION    3
 #define REVISION_VERSION  1
 #define FILE_DESCRIPTION  "Yopi JModel library"
 #define PRODUCT_NAME      "Yopi JModel dynamic link library"
