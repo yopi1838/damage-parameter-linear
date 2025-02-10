@@ -92,7 +92,6 @@ namespace jmodels
     ds_hist(0),
     un_ro(0),
     fm_ro(0),
-    reloadFlag(0),
     un_hist_ten(0),
     dt_hist(0),
     dc_hist(0),
@@ -132,7 +131,7 @@ namespace jmodels
           "table-dt    ,table-ds ,"
           "tensile-disp-plastic    ,shear-disp-plastic ,"
           "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-          "un_reloading,fm_reloading,reloadFlag,un_hist_ten, utemp, dt_hist");
+          "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist");
   }
 
   string JModelYopi::getStates() const
@@ -181,10 +180,10 @@ namespace jmodels
     case 35: return peak_normal;    
     case 36: return ds_hist;
     case 37: return un_ro;
-    case 38: return fm_ro;    
-    case 39: return reloadFlag;
-    case 40: return un_hist_ten;
-    case 41: return dt_hist;
+    case 38: return fm_ro;
+    case 39: return un_hist_ten;
+    case 40: return dt_hist;
+    case 41: return dc_hist;
     }
     return 0.0;
   }
@@ -231,10 +230,10 @@ namespace jmodels
     case 35: peak_normal = prop.to<double>(); break;    
     case 36: ds_hist = prop.to<double>(); break;
     case 37: un_ro = prop.to<double>(); break;
-    case 38: fm_ro = prop.to<double>(); break;
-    case 39: reloadFlag = prop.to<double>(); break;
-    case 40: un_hist_ten = prop.to<double>(); break;
-    case 41: dt_hist = prop.to<double>(); break;
+    case 38: fm_ro = prop.to<double>(); break;    
+    case 39: un_hist_ten = prop.to<double>(); break;
+    case 40: dt_hist = prop.to<double>(); break;
+    case 41: dc_hist = prop.to<double>(); break;
     }
   }
 
@@ -286,10 +285,10 @@ namespace jmodels
     peak_normal = mm->peak_normal;    
     ds_hist = mm->ds_hist;
     un_ro = mm->un_ro;
-    fm_ro = mm->fm_ro;
-    reloadFlag = mm->reloadFlag;
+    fm_ro = mm->fm_ro;    
     un_hist_ten = mm->un_hist_ten;
     dt_hist = mm->dt_hist;
+    dc_hist = mm->dc_hist;
   }
 
   void JModelYopi::initialize(uint32 dim,State *s)
@@ -402,7 +401,7 @@ namespace jmodels
             s->normal_force_ += s->normal_force_inc_;
         }              
     }
-    else {               
+    else {  
         if (un_current + dn_ >= un_hist_comp && reloadFlag == 0) {
             un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
         }        
@@ -425,15 +424,17 @@ namespace jmodels
             }
         }        
         else {                                         
-            double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
+            //double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
+            double un_plastic_rat = 0.25 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
+            //double un_plastic_rat = 1.1905*(un_hist_comp / ucel_) + 0.0311;
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                if (un_current + dn_ >= un_hist_comp * .98) pertFlag = 2;
+                if (un_current + dn_ >= un_hist_comp * 985) pertFlag = 2;
                 else pertFlag = 0;
                 if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
-                    double k1 = 2 * kn_comp_;
-                    double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
+                    double k1 = 1.5 * kn_comp_;
+                    double k2 = 0.1 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
                     double B3 = 2 - (k2 / Es) * (1 + B1);
@@ -444,16 +445,18 @@ namespace jmodels
                     if (fm < 0.0) fm = 0.0;
                     s->normal_force_ = fm * s->area_;                    
                     fc_current = fm;
+                    fm_ro = fm;
+                    un_ro = s->normal_disp_ * (-1.0);
                     reloadFlag = 1;  
                 }            
                 else if (sn_ <= 0.0) {
                     fm_ro = 0.0;
                     kna = kn_ * s->area_;
                     ////tension
-                    /*s->normal_force_inc_ = kna * dn_;
-                    s->normal_force_ += s->normal_force_inc_;*/
-                    s->normal_force_inc_ = 0;
-                    s->normal_force_ = 0;
+                    s->normal_force_inc_ = kna * dn_;
+                    s->normal_force_ += s->normal_force_inc_;
+                    /*s->normal_force_inc_ = 0;
+                    s->normal_force_ = 0;*/
                 }
                 else {
                     //Elastic unloading                    
@@ -469,21 +472,11 @@ namespace jmodels
                 //un_hist_comp = s->normal_disp_ * (-1.0);                 
                 if (reloadFlag == 1) {
                     //recalculate un_hist_comp
-                    if (un_current >= un_plastic) {
-                        double beta = 1.0;                        
-                        double k_re = (beta * peak_normal - fm_ro) / ((un_hist_comp) - un_ro);
-                        double fm_re = fm_ro + k_re * (un_current - un_ro);
-                        s->normal_force_ = fm_re * s->area_;
-                        fc_current = fm_re;
-                    }
-                    else {
-                        //Elastic unloading                    
-                        kna = kn_comp_ * s->area_;
-                        s->normal_force_inc_ = kna * dn_;
-                        s->normal_force_ += s->normal_force_inc_;
-                        fc_current = s->normal_force_ / s->area_;
-                        reloadFlag = 0;
-                    }
+                    double beta = 1.0;                        
+                    double k_re = (beta * peak_normal - fm_ro) / ((un_hist_comp) - un_ro);
+                    double fm_re = fm_ro + k_re * (un_current - un_ro);
+                    s->normal_force_ = fm_re * s->area_;
+                    fc_current = fm_re;
                 }
                 else {
                     //Elastic unloading                    
@@ -630,14 +623,14 @@ namespace jmodels
         if (f2 >= 0.0) 
         {
             shearCorrection(s, &IPlas, fsm, fsmax);
-            if (s->normal_disp_ < 0.0) {
-                //Check f3
-                double f3;
-                f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-                if (f3 >= 0.0) {
-                    compCorrection(s, &IPlas, comp);
-                }
-            }                    
+            //if (s->normal_disp_ < 0.0) {
+            //    //Check f3
+            //    double f3;
+            //    f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+            //    if (f3 >= 0.0) {
+            //        compCorrection(s, &IPlas, comp);
+            //    }
+            //}                    
         }// if (f2)
         //Check compressive failure (compressive cap)
         if (s->normal_disp_ < 0.0) {
@@ -647,9 +640,9 @@ namespace jmodels
             if (f3 >= 0.0)
             {
                 compCorrection(s, &IPlas, comp);
-                if (f2 >= 0.0) {
+                /*if (f2 >= 0.0) {
                     shearCorrection(s, &IPlas, fsm, fsmax);
-                }
+                }*/
             }
         }//s->normal_disp < 0.0
     } // if (!tenflg)
