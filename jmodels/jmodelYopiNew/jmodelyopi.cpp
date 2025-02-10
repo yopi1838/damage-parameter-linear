@@ -444,9 +444,7 @@ namespace jmodels
                     fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
                     if (fm < 0.0) fm = 0.0;
                     s->normal_force_ = fm * s->area_;                    
-                    fc_current = fm;
-                    fm_ro = fm;
-                    un_ro = s->normal_disp_ * (-1.0);
+                    fc_current = fm;                   
                     reloadFlag = 1;  
                 }            
                 else if (sn_ <= 0.0) {
