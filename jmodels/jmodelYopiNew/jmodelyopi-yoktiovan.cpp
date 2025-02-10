@@ -318,7 +318,7 @@ namespace jmodels
 
     if (G_I && iTension_d_)
         throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
-    //Test
+
     if (G_II && iShear_d_)
         throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
 
@@ -368,12 +368,12 @@ namespace jmodels
     
     // normal force
     double fn0 = s->normal_force_;
-    double uel_limit = compression_ / kn_comp_ / 5.0;
+    double uel_limit = compression_ / kn_comp_ / 3.0;
     double sn_ = s->normal_force_ / s->area_;
     double dn_ = s->normal_disp_inc_ * (-1.0);
     double un_current = s->normal_disp_ * (-1.0);
     //Calculate elastic limit
-    double fel_limit = compression_ / 5.0;
+    double fel_limit = compression_ / 3.0;
     double fpeak = compression_;    
     double ftemp = 0.0;        
 
@@ -470,11 +470,21 @@ namespace jmodels
                 //un_hist_comp = s->normal_disp_ * (-1.0);                 
                 if (reloadFlag == 1) {
                     //recalculate un_hist_comp
-                    double beta = 1.0;                        
-                    double k_re = (beta * peak_normal - fm_ro) / ((un_hist_comp) - un_ro);
-                    double fm_re = fm_ro + k_re * (un_current - un_ro);
-                    s->normal_force_ = fm_re * s->area_;
-                    fc_current = fm_re;
+                    if (un_current >= un_plastic) {
+                        double beta = 1.0;
+                        double k_re = (beta * peak_normal - fm_ro) / ((un_hist_comp)-un_ro);
+                        double fm_re = fm_ro + k_re * (un_current - un_ro);
+                        s->normal_force_ = fm_re * s->area_;
+                        fc_current = fm_re;
+                    }
+                    else {
+                        //Elastic unloading                    
+                        kna = kn_comp_ * s->area_;
+                        s->normal_force_inc_ = kna * dn_;
+                        s->normal_force_ += s->normal_force_inc_;
+                        fc_current = s->normal_force_ / s->area_;
+                        reloadFlag = 0;
+                    }
                 }
                 else {
                     //Elastic unloading                    
@@ -483,9 +493,9 @@ namespace jmodels
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
                     reloadFlag = 0;
-                }                
-            }         
-        } //unloading  
+                }
+            }
+        } //unloading
     }
 
     // correction for time step in which joint opens (or goes into tension)
