@@ -425,14 +425,14 @@ namespace jmodels
             }
         }        
         else {                                         
-            double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
+            double un_plastic_rat = 0.25 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
             double un_plastic = un_plastic_rat * ucel_;
             if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                 //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                 if (un_current + dn_ >= un_hist_comp * .99) pertFlag = 2;
                 else pertFlag = 0;
                 if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
-                    double k1 = 2 * kn_comp_;
+                    double k1 = 1.5 * kn_comp_;
                     double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                     double Es = peak_normal / (un_hist_comp - un_plastic);
                     double B1 = k1 / Es;
@@ -450,10 +450,10 @@ namespace jmodels
                     fm_ro = 0.0;
                     kna = kn_ * s->area_;
                     ////tension
-                    /*s->normal_force_inc_ = kna * dn_;
-                    s->normal_force_ += s->normal_force_inc_;*/
-                    s->normal_force_inc_ = 0;
-                    s->normal_force_ = 0;
+                    s->normal_force_inc_ = kna * dn_;
+                    s->normal_force_ += s->normal_force_inc_;
+                    /*s->normal_force_inc_ = 0;
+                    s->normal_force_ = 0;*/
                 }
                 else {
                     //Elastic unloading                    
@@ -622,14 +622,14 @@ namespace jmodels
         if (f2 >= 0.0) 
         {
             shearCorrection(s, &IPlas, fsm, fsmax);
-            if (s->normal_disp_ < 0.0) {
-                //Check f3
-                double f3;
-                f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-                if (f3 >= 0.0) {
-                    compCorrection(s, &IPlas, comp);
-                }
-            }                    
+            //if (s->normal_disp_ < 0.0) {
+            //    //Check f3
+            //    double f3;
+            //    f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+            //    /*if (f3 >= 0.0) {
+            //        compCorrection(s, &IPlas, comp);
+            //    }*/
+            //}                    
         }// if (f2)
         //Check compressive failure (compressive cap)
         if (s->normal_disp_ < 0.0) {
@@ -639,9 +639,9 @@ namespace jmodels
             if (f3 >= 0.0)
             {
                 compCorrection(s, &IPlas, comp);
-                if (f2 >= 0.0) {
+                /*if (f2 >= 0.0) {
                     shearCorrection(s, &IPlas, fsm, fsmax);
-                }
+                }*/
             }
         }//s->normal_disp < 0.0
     } // if (!tenflg)
