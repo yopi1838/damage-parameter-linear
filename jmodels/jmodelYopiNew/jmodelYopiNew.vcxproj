@@ -123,7 +123,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Program Files\Itasca\ItascaSoftware910\PluginFiles\interface;C:\Program Files\Itasca\ItascaSoftware910\PluginFiles\jmodels\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files\Itasca\ItascaSoftware910\PluginFiles\interface;C:\Program Files\Itasca\ItascaSoftware910\PluginFiles\jmodels\src;C:\Program Files\Itasca\Itasca Software Subscription\PluginFiles\jmodels\src;C:\Program Files\Itasca\Itasca Software Subscription\PluginFiles\interface;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
@@ -132,7 +132,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>C:\Program Files\Itasca\ItascaSoftware910\PluginFiles\lib\exe64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\Program Files\Itasca\ItascaSoftware910\PluginFiles\lib\exe64;C:\Program Files\Itasca\Itasca Software Subscription\PluginFiles\lib\exe64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>base009.lib;jmodels009.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
