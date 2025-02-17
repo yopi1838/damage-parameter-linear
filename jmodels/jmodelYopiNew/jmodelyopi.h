@@ -81,11 +81,11 @@ namespace jmodels
     double un_ro;//reloading displacement
     double fm_ro; //reloading stress
     double un_hist_ten;
-    double reloadFlag; //reloading flag
+    uint32 reloadFlag; //reloading flag
     uint32 plasFlag;    
     double dc_hist;
     uint32 pertFlag;      
-    double dt_hist;    
+    double dt_hist;
   };
 } // namespace models
 
