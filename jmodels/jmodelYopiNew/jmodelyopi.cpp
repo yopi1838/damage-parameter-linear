@@ -96,26 +96,27 @@ namespace jmodels
         dt_hist(0),
         dc_hist(0),
         pertFlag(0),
-        plasFlag(0)
+        plasFlag(0),
+        reloadFlag(0)
     {
     }
 
     string JModelYopi::getName() const
     {
-#ifdef JMODELDEBUG
-        return "yopid";
-#else
-        return "yopi";
-#endif
+        #ifdef JMODELDEBUG
+                return "yopid";
+        #else
+                return "yopi";
+        #endif
     }
 
     string JModelYopi::getFullName() const
     {
-#ifdef JMODELDEBUG
-        return "Yopi Debug";
-#else
-        return "Yopi";
-#endif
+        #ifdef JMODELDEBUG
+                return "Yopi Debug";
+        #else
+                return "Yopi";
+        #endif
     }
 
     uint32 JModelYopi::getMinorVersion() const
@@ -361,6 +362,7 @@ namespace jmodels
             s->working_[Dqt] = 0.0;
             s->working_[Dqkn] = 0.0;
             s->working_[Dqc] = 0.0;
+            s->working_[5] = 0.0;
         }
 
         double uel = 0.0;
@@ -386,13 +388,17 @@ namespace jmodels
                 s->working_[D_un_hist] = un_hist_ten;
             }
             if (dn_ >= 0.0) {
-                if (sn_ >= 0.0) s->normal_force_ = 0.0;
-                else {
-                    kna = kn_ * s->area_;
-                    //tension
-                    s->normal_force_inc_ = kna * dn_;
-                    s->normal_force_ += s->normal_force_inc_;
-                }
+                kna = kn_ * s->area_;
+                //tension
+                s->normal_force_inc_ = kna * dn_;
+                s->normal_force_ += s->normal_force_inc_;
+                //if (sn_ >= 0.0) s->normal_force_ = 0.0;
+                //else {
+                //    kna = kn_ * s->area_;
+                //    //tension
+                //    s->normal_force_inc_ = kna * dn_;
+                //    s->normal_force_ += s->normal_force_inc_;
+                //}
             }
             else {
                 kna = kn_ * s->area_;
@@ -430,7 +436,7 @@ namespace jmodels
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                     //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    if (un_current + dn_ >= un_hist_comp * 98) pertFlag = 2;
+                    if (un_current + dn_ >= un_hist_comp * 99) pertFlag = 2;
                     else pertFlag = 0;
                     if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
                         double k1 = 1.5 * kn_comp_;
@@ -446,18 +452,20 @@ namespace jmodels
                         else if (fm < 0.0) fm = 0.0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
-                        if (fm != peak_normal) fm_ro = fm;
-                        if (s->normal_disp_ * (-1.0) != un_hist_comp) un_ro = un_current + dn_;
+                        /*fm_ro = fm;
+                        un_ro = un_current;*/
+                        fm_ro = fm;
+                        if (un_current + dn_ != un_hist_comp) un_ro = un_current;
                         reloadFlag = 1;
                     }
                     else if (sn_ <= 0.0) {
                         fm_ro = 0.0;
                         kna = kn_ * s->area_;
                         ////tension
-                        s->normal_force_inc_ = kna * dn_;
-                        s->normal_force_ += s->normal_force_inc_;
-                        /*s->normal_force_inc_ = 0;
-                        s->normal_force_ = 0;*/
+                        /*s->normal_force_inc_ = kna * dn_;
+                        s->normal_force_ += s->normal_force_inc_;*/
+                        s->normal_force_inc_ = 0;
+                        s->normal_force_ = 0;
                     }
                     else {
                         //Elastic unloading                    
@@ -471,7 +479,7 @@ namespace jmodels
                 }
                 else {
                     //un_hist_comp = s->normal_disp_ * (-1.0);                 
-                    if (reloadFlag == 1) {
+                    if (reloadFlag == 1) {                        
                         //recalculate un_hist_comp
                         double beta = 1.0;
                         double k_re = (beta * peak_normal - fm_ro) / ((un_hist_comp)-un_ro);
@@ -650,7 +658,7 @@ namespace jmodels
 
         // store peak
         if (dn_ >= 0.0 && sn_ >= peak_normal && un_current >= 0.0)
-            peak_normal = sn_;
+            peak_normal = sn_;        
     }//run
 
     void JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten) {
@@ -695,6 +703,9 @@ namespace jmodels
                     dil = resdileff;
                 }
                 s->normal_force_ += kn_ * s->area_ * dil * dusm;
+            }
+            else {
+                s->normal_force_ += -kn_initial_ * s->area_ * s->normal_disp_inc_;
             }// if (usm<zdd)
         }// if (dilation_)
 
