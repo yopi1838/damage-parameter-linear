@@ -387,25 +387,10 @@ namespace jmodels
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
             }
-            if (dn_ >= 0.0) {
-                kna = kn_ * s->area_;
-                //tension
-                s->normal_force_inc_ = kna * dn_;
-                s->normal_force_ += s->normal_force_inc_;
-                //if (sn_ >= 0.0) s->normal_force_ = 0.0;
-                //else {
-                //    kna = kn_ * s->area_;
-                //    //tension
-                //    s->normal_force_inc_ = kna * dn_;
-                //    s->normal_force_ += s->normal_force_inc_;
-                //}
-            }
-            else {
-                kna = kn_ * s->area_;
-                //tension
-                s->normal_force_inc_ = kna * dn_;
-                s->normal_force_ += s->normal_force_inc_;
-            }
+            kna = kn_ * s->area_;
+            //tension
+            s->normal_force_inc_ = kna * dn_;
+            s->normal_force_ += s->normal_force_inc_;            
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0) {
@@ -477,15 +462,22 @@ namespace jmodels
                     }
 
                 }
-                else {
-                    //un_hist_comp = s->normal_disp_ * (-1.0);                 
+                else {                           
                     if (reloadFlag == 1) {                        
                         //recalculate un_hist_comp
                         double beta = 1.0;
+
+                        ////For debugging purposes
+                        //if (un_hist_comp == un_ro) {
+                        //    throw std::runtime_error("un_hist_comp is equal to un_ro, producing division by zero!");
+                        //}
+
                         double k_re = (beta * peak_normal - fm_ro) / ((un_hist_comp)-un_ro);
+
+                        if (std::isnan(k_re)) k_re = (beta * peak_normal) / ((un_hist_comp));
                         double fm_re = fm_ro + k_re * (un_current - un_ro);
                         s->normal_force_ = fm_re * s->area_;
-                        fc_current = fm_re;
+                        fc_current = fm_re;                        
                     }
                     else {
                         //Elastic unloading                    
@@ -616,8 +608,11 @@ namespace jmodels
                 double resamueff = tan_res_friction_;
                 if (!resamueff) resamueff = tan_friction_;
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
+                
+                //Store the current friction angle
                 double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
-                friction_current_ = atan(tan_friction_c) / dDegRad;
+                if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
+                else friction_current_ = atan(tan_friction_) / dDegRad;
                 double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                 fsmax = tc;
                 f2 = fsm - tc;
@@ -713,7 +708,7 @@ namespace jmodels
 
     void JModelYopi::compCorrection(State* s, uint32* IPlasticity, double& comp) {
         if (IPlasticity) *IPlasticity = 3;
-        double gradient;
+        double gradient = s->shear_force_.mag();
         double X_yield;
         double Y_yield;
         double x;
@@ -726,17 +721,25 @@ namespace jmodels
         s->state_ |= comp_now;
         //Calculate the radial distance from point to the origin
         x = (s->normal_force_); //normal force would be larger than the position of Cn
+        if (x < 0.0) {
+            throw std::runtime_error("solveQuadratic: Normal force should be in compression.");
+        }
         y = s->shear_force_.mag();
+              
+        //Calculate the gradient intercept here
+        if (x) gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
+        else gradient = s->shear_force_.mag();
 
-        R_violates = sqrt(pow(x, 2) + pow(y, 2));
-        gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
         //Find the intercept from the gradient at the yield surface
         a = Cnn + Css * pow(gradient, 2);
         b = Cn;
         c = -pow(comp, 2);
         X_yield = solveQuadratic(a, b, c);
         Y_yield = gradient * X_yield;
+        
+        R_violates = sqrt(pow(x, 2) + pow(y, 2));
         R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
+
         //Correct the normal and shear forces to the yield surface
         ratc = R_yield / R_violates;
         if (!s->normal_force_) {
