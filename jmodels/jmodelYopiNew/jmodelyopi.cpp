@@ -627,7 +627,7 @@ namespace jmodels
             if (f2 >= 0.0)
             {
                 shearCorrection(s, &IPlas, fsm, fsmax);
-                if (s->normal_disp_ < 0.0) {
+                if (s->normal_force_ > 0.0) {
                     //Check f3
                     double f3;
                     f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
@@ -637,7 +637,7 @@ namespace jmodels
                 }
             }// if (f2)
             //Check compressive failure (compressive cap)
-            if (s->normal_disp_ < 0.0) {
+            if (s->normal_force_ > 0.0) {
                 double f3;
                 f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
                 //If it violates the yield criterion for compression
