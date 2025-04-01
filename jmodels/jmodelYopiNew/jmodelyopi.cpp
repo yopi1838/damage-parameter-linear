@@ -408,6 +408,9 @@ namespace jmodels
                     s->normal_force_inc_ = kna * dn_;
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
+                    if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                        throw std::runtime_error("NaN encountered here 1");
+                    }
                 }
                 else if (!s->state_ || sn_ < compression_) {
                     double x_new = ((un_current + dn_) - uel_limit) / ucel_;
@@ -424,6 +427,9 @@ namespace jmodels
                     else s->normal_force_ = ftemp * s->area_;
                     fc_current = s->normal_force_ / s->area_;
                     plasFlag = 1;
+                    if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                        throw std::runtime_error("NaN encountered here 6");
+                    }
                 }
             }
             else {
@@ -457,6 +463,9 @@ namespace jmodels
                         fm_ro = fm;
                         un_ro = un_current;
                         reloadFlag = 1;
+                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered here 5");
+                        }
                     }
                     else if (sn_ <= 0.0) {
                         fm_ro = 0.0;
@@ -466,6 +475,9 @@ namespace jmodels
                         s->normal_force_ += s->normal_force_inc_;*/
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = 0;
+                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered here 2");
+                        }
                     }
                     else {
                         //Elastic unloading                    
@@ -474,6 +486,9 @@ namespace jmodels
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
                         reloadFlag = 0;
+                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered here 3");
+                        }
                     }
 
                 }
@@ -501,6 +516,9 @@ namespace jmodels
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
                         reloadFlag = 0;
+                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered here 4");
+                        }
                     }
                 }
             } //unloading  
