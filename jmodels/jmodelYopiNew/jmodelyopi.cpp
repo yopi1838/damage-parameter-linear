@@ -353,6 +353,8 @@ namespace jmodels
         s->state_ &= ~comp_now;
         uint32 IPlas = 0;
 
+        if (!s->area_) return;
+
         double kna = kn_ * s->area_;
         double ksa = ks_ * s->area_;
         double kn_comp_ = kn_initial_;
@@ -398,7 +400,7 @@ namespace jmodels
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >=0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
-            }
+            }           
             if ((sn_+dsn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
@@ -439,7 +441,7 @@ namespace jmodels
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                     //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    if (un_current + dn_ >= un_hist_comp * 99) pertFlag = 2;
+                    if (un_current + dn_ >= un_hist_comp * 98) pertFlag = 2;
                     else pertFlag = 0;
                     if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
                         double k1 = 1.5 * kn_comp_;
@@ -461,7 +463,7 @@ namespace jmodels
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
                         fm_ro = fm;
-                        un_ro = un_current;
+                        un_ro = s->normal_disp_ * (-1.0);
                         reloadFlag = 1;
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 5");
@@ -493,13 +495,14 @@ namespace jmodels
 
                 }
                 else {                           
-                    if (reloadFlag == 1) {                        
+                    if (un_current + dn_ < un_hist_comp) {                        
                         //recalculate un_hist_comp
                         double beta = 1.0;
                         double denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
-                        if (std::abs(denom) < 1e-12)
-                            k_re = (beta * peak_normal) / (un_hist_comp);
+                        if (std::abs(denom) < 1e-12) {
+                            throw std::runtime_error("un_hist_comp equals to un_ro!");
+                        }                            
                         k_re = (beta * peak_normal - fm_ro) / denom;                        
                         double fm_re = fm_ro + k_re * (un_current - un_ro);
                         s->normal_force_inc_ = 0;
@@ -512,6 +515,7 @@ namespace jmodels
                     else {
                         //Elastic unloading                    
                         kna = kn_comp_ * s->area_;
+                        if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
@@ -690,7 +694,7 @@ namespace jmodels
 
         // store peak
         if (dn_ >= 0.0 && sn_ >= peak_normal && un_current >= 0.0)
-            peak_normal = sn_;        
+            peak_normal = sn_;    
     }//run
 
     void JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten) {
