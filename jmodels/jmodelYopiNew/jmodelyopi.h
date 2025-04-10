@@ -23,7 +23,7 @@ namespace jmodels
     virtual void           initialize(uint32 dim,State *s); // calls setValid(dim)    
     virtual double         solveQuadratic(double, double, double);
     virtual void           compCorrection(State* s, uint32*IPlasticity, double&comp);
-    virtual void           shearCorrection(State* s, uint32* IPlasticity, double&fsm, double&fsmax);
+    virtual void           shearCorrection(State* s, uint32* IPlasticity, double&fsm, double&fsmax, double& usel);
     virtual void           tensionCorrection(State* s, uint32* IPlasticity, double& ten);
     // Optional 
     virtual double         getStrengthStressRatio(const double&, const DVect3&) const { return 10.0; }
@@ -41,7 +41,7 @@ namespace jmodels
         double friction_;
         double dilation_;
         double tension_;
-        double zero_dilation_;
+        double s_zero_dilation_; //zero dilation stress
         double res_cohesion_;
         double res_friction_;
         double res_tension_;
@@ -86,6 +86,9 @@ namespace jmodels
         double dc_hist;
         uint32 pertFlag;      
         double dt_hist;
+        double delta; //dilatancy gradient
+        double dilation_current;
+        double un_dilatant;
   };
 } // namespace models
 

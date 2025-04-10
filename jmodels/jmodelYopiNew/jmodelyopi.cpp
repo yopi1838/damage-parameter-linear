@@ -59,7 +59,7 @@ namespace jmodels
         friction_(0),
         dilation_(0),
         tension_(0),
-        zero_dilation_(0),
+        s_zero_dilation_(0),
         res_cohesion_(0),
         res_friction_(0),
         res_tension_(0),
@@ -97,7 +97,10 @@ namespace jmodels
         dc_hist(0),
         pertFlag(0),
         plasFlag(0),
-        reloadFlag(0)
+        reloadFlag(0),
+        delta(0),
+        dilation_current(0),
+        un_dilatant(0)
     {
     }
 
@@ -132,7 +135,7 @@ namespace jmodels
             "table-dt    ,table-ds ,"
             "tensile-disp-plastic    ,shear-disp-plastic ,"
             "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist");
+            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist,delta,dilation_current,un_dilatant");
     }
 
     string JModelYopi::getStates() const
@@ -152,7 +155,7 @@ namespace jmodels
         case 6:  return friction_;
         case 7:  return dilation_;
         case 8:  return tension_;
-        case 9:  return zero_dilation_;
+        case 9:  return s_zero_dilation_;
         case 10:  return res_cohesion_;
         case 11:  return res_friction_;
         case 12: return res_comp_;
@@ -185,6 +188,9 @@ namespace jmodels
         case 39: return un_hist_ten;
         case 40: return dt_hist;
         case 41: return dc_hist;
+        case 42: return delta;
+        case 43: return dilation_current;
+        case 44: return un_dilatant;
         }
         return 0.0;
     }
@@ -202,7 +208,7 @@ namespace jmodels
         case 6: friction_ = prop.to<double>();  break;
         case 7: dilation_ = prop.to<double>();  break;
         case 8: tension_ = prop.to<double>();  break;
-        case 9: zero_dilation_ = prop.to<double>();  break;
+        case 9: s_zero_dilation_ = prop.to<double>();  break;
         case 10: res_cohesion_ = prop.to<double>();  break;
         case 11: res_friction_ = prop.to<double>();  break;
         case 12: res_comp_ = prop.to<double>(); break;
@@ -235,6 +241,9 @@ namespace jmodels
         case 39: un_hist_ten = prop.to<double>(); break;
         case 40: dt_hist = prop.to<double>(); break;
         case 41: dc_hist = prop.to<double>(); break;
+        case 42: delta = prop.to<double>(); break;
+        case 43: dilation_current = prop.to<double>(); break;
+        case 44: un_dilatant = prop.to<double>(); break;
         }
     }
 
@@ -257,7 +266,7 @@ namespace jmodels
         friction_ = mm->friction_;
         dilation_ = mm->dilation_;
         tension_ = mm->tension_;
-        zero_dilation_ = mm->zero_dilation_;
+        s_zero_dilation_ = mm->s_zero_dilation_;
         res_cohesion_ = mm->res_cohesion_;
         res_friction_ = mm->res_friction_;
         res_comp_ = mm->res_comp_;
@@ -290,6 +299,9 @@ namespace jmodels
         un_hist_ten = mm->un_hist_ten;
         dt_hist = mm->dt_hist;
         dc_hist = mm->dc_hist;
+        delta = mm->delta;
+        dilation_current = mm->dilation_current;
+        un_dilatant = mm->un_dilatant;
     }
 
     void JModelYopi::initialize(uint32 dim, State* s)
@@ -322,6 +334,12 @@ namespace jmodels
 
         if (G_II && iShear_d_)
             throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
+
+        if (dilation_ && !delta) delta = 2;
+        if (!dilation_) {
+            delta = 1.0;
+            un_dilatant = 0.0;
+        }
 
         if (!compression_) compression_ = 1e20;
         if (!res_comp_) res_comp_ = 0.0;
@@ -400,7 +418,10 @@ namespace jmodels
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >=0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
-            }           
+            }
+            else if (un_current + dn_ < un_hist_comp * 0.98 && reloadFlag == 1 && dn_ < 0.0) {
+                un_ro = s->normal_disp_ * (-1.0);
+            }
             if ((sn_+dsn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
@@ -462,8 +483,7 @@ namespace jmodels
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
-                        fm_ro = fm;
-                        un_ro = s->normal_disp_ * (-1.0);
+                        fm_ro = fm;                        
                         reloadFlag = 1;
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 5");
@@ -500,7 +520,7 @@ namespace jmodels
                         double beta = 1.0;
                         double denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
-                        if (std::abs(denom) < 1e-12) {
+                        if (std::abs(denom) < 1e-16) {
                             throw std::runtime_error("un_hist_comp equals to un_ro!");
                         }                            
                         k_re = (beta * peak_normal - fm_ro) / denom;                        
@@ -585,20 +605,29 @@ namespace jmodels
             bool sign = std::signbit(dn_);
             if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
                 //if table_dt is provided.
-                tP_ = un_hist_ten * (-1.0) / (tension_ / kn_initial_);
                 ////Exponential Softening                
                 if (sign) {
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
-                    else if (G_I) dt = 1.0 - exp(-tension_ / G_I * (un_hist_ten * (-1.0) - (tension_ / kn_initial_))); //Exponential Softening
+                    if (iTension_d_) {
+                        tP_ = un_hist_ten * (-1.0) / (tension_ / kn_initial_);
+                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                    }
+                    else if (G_I) {
+                        dt = 1.0 - exp(-tension_ / G_I * (un_hist_ten * (-1.0) - (tension_ / kn_initial_))); //Exponential Softening
+                    }
                     un_hist_ten += dn_;
                 }
                 d_ts = dt + ds - dt * ds;
             }
             else {
-                tP_ = s->normal_disp_ / (tension_ / kn_initial_);
                 if (sign) {
-                    if (iTension_d_) dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
-                    else if (G_I) dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
+                    if (iTension_d_) {
+                        tP_ = s->normal_disp_ / (tension_ / kn_initial_);
+                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                    }
+                    else if (G_I) {
+                        tP_ = s->normal_disp_ - (tension_ / kn_initial_);
+                        dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
+                    }
                 }
             }
             if (dt_hist < dt) dt_hist = dt;
@@ -634,15 +663,21 @@ namespace jmodels
             double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
             double fsm = s->shear_force_.mag();
             double f2;
+            double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+            double usel = tmax / ks_;
             if (fsmax < 0.0) fsmax = 0.0;
             if (s->state_) {
-                //Calculate max shear stress            
-                double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
-                double usel = tmax / ks_;
-                sP_ = s->shear_disp_.mag() / usel;
+                //Calculate max shear stress                            
+                
                 ////Exponential Softening                              
-                if (iShear_d_) ds = s->getYFromX(iShear_d_, sP_);
-                else if (G_II) ds = 1 - exp(-cohesion_ / G_II * (s->shear_disp_.mag() - usel));
+                if (iShear_d_) {
+                    sP_ = s->shear_disp_.mag() / usel;
+                    ds = s->getYFromX(iShear_d_, sP_);
+                }
+                else if (G_II) {
+                    sP_ = s->shear_disp_.mag() - usel;
+                    ds = 1 - exp(-cohesion_ / G_II * (s->shear_disp_.mag() - usel));
+                }
                 if (ds >= ds_hist) ds_hist = ds;
                 else ds = ds_hist;
                 d_ts = dt + ds - dt * ds;
@@ -651,10 +686,25 @@ namespace jmodels
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
                 
                 //Store the current friction angle
+                double tc = 0.0;
                 double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
                 if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
                 else friction_current_ = atan(tan_friction_) / dDegRad;
-                double tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+                tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+                if (dilation_){
+                    double tan_dilation_c = tan_dilation_ * (1 - s->shear_disp_.mag() / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));
+                    tc = cc * s->area_ + s->normal_force_ * tan_dilation_c;    
+                    double dusm = s->shear_disp_inc_.mag();
+                    double dil = 0.0;
+                    if (!s->state_) dil = tan_dilation_;
+                    else
+                    {
+                        dil = tan_dilation_ * (1 - (s->shear_disp_.mag()) / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));;
+                        dilation_current = atan(dil) / dDegRad;
+                    }
+                    un_dilatant += dil * dusm;
+                    s->normal_force_ += kn_ * s->area_ * dil * dusm;
+                }                
                 fsmax = tc;
                 f2 = fsm - tc;
             }
@@ -667,7 +717,7 @@ namespace jmodels
             //Check if slip
             if (f2 >= 0.0)
             {
-                shearCorrection(s, &IPlas, fsm, fsmax);
+                shearCorrection(s, &IPlas, fsm, fsmax,usel);
                 if (s->normal_force_ > 0.0) {
                     //Check f3
                     double f3;
@@ -686,7 +736,7 @@ namespace jmodels
                 {
                     compCorrection(s, &IPlas, comp);
                     if (f2 >= 0.0) {
-                        shearCorrection(s, &IPlas, fsm, fsmax);
+                        shearCorrection(s, &IPlas, fsm, fsmax,usel);
                     }
                 }
             }//s->normal_disp < 0.0
@@ -711,39 +761,32 @@ namespace jmodels
         s->shear_force_inc_ = DVect3(0, 0, 0);
     }
 
-    void JModelYopi::shearCorrection(State* s, uint32* IPlasticity, double& fsm, double& fsmax) {
+    void JModelYopi::shearCorrection(State* s, uint32* IPlasticity, double& fsm, double& fsmax,double& usel) {
         if (IPlasticity) *IPlasticity = 2;
-        double rat = 0.0;
+        double rat = 0.0;        
         if (fsm) rat = fsmax / fsm;
         s->shear_force_ *= rat;
         s->state_ |= slip_now;
         s->shear_force_inc_ = DVect3(0, 0, 0);
-        // dilation
-        if (dilation_)
-        {
-            double zdd = zero_dilation_;
-            double usm = s->shear_disp_.mag();
-            if (!zdd) zdd = 1e20;
-            if (usm < zdd)
-            {
-                double dusm = s->shear_disp_inc_.mag();
-                double dil = 0.0;
-                if (!s->state_) dil = tan_dilation_;
-                else
-                {
-                    // if residual dilation is zero, take peak value
-                    //     Double resdileff = tan_res_dilation_;
-                    // Note: In CLJ1 in 3DEC, no residual dilation is defined
-                    double resdileff = tan_dilation_;
-                    if (!resdileff) resdileff = tan_dilation_;
-                    dil = resdileff;
-                }
-                s->normal_force_ += kn_ * s->area_ * dil * dusm;
-            }
-            else {
-                s->normal_force_ += -kn_initial_ * s->area_ * s->normal_disp_inc_;
-            }// if (usm<zdd)
-        }// if (dilation_)
+        double k = usel;
+        k = 0.0;
+        ////// dilation
+        //double zdd = 1e20;
+        //double usm = s->shear_disp_.mag();
+        //if (!zdd) zdd = 1e20;
+        //if (usm < zdd)
+        //{
+        //    double dusm = s->shear_disp_inc_.mag();
+        //    double dil = 0.0;
+        //    if (!s->state_) dil = tan_dilation_;
+        //    else
+        //    {
+        //        dil = tan_dilation_ * (1 - (s->normal_force_ / s->area_) / (s_zero_dilation_)) * exp(-delta * (s->shear_disp_.mag() - usel));;
+        //        dilation_current = atan(dil) / dDegRad;
+        //    }
+        //    un_dilatant = s->normal_disp_inc_+ dil * dusm;
+        //    s->normal_force_ += kn_ * s->area_ * dil * dusm;
+        //}
 
     }
 
