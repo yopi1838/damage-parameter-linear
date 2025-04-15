@@ -419,9 +419,6 @@ namespace jmodels
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >=0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            else if (un_current + dn_ < un_hist_comp * 0.98 && reloadFlag == 1 && dn_ < 0.0) {
-                un_ro = s->normal_disp_ * (-1.0);
-            }
             if ((sn_+dsn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
@@ -483,7 +480,8 @@ namespace jmodels
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
-                        fm_ro = fm;                        
+                        fm_ro = fm;
+                        if (un_current + dn_ < un_hist_comp * 9 && dn_ < 0.0) un_ro = un_current+dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1;
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 5");
@@ -515,15 +513,27 @@ namespace jmodels
 
                 }
                 else {                           
-                    if (un_current + dn_ < un_hist_comp) {                        
+                    if (reloadFlag ==1 && dn_ >= 0.0) {                        
                         //recalculate un_hist_comp
                         double beta = 1.0;
-                        double denom = un_hist_comp - un_ro;
+                        double denom = un_hist_comp;
+                        if (un_ro) denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
+
+                        //First correction attempt to un_ro
                         if (std::abs(denom) < 1e-16) {
-                            throw std::runtime_error("un_hist_comp equals to un_ro!");
-                        }                            
-                        k_re = (beta * peak_normal - fm_ro) / denom;                        
+                            std::cerr << "Warning: Small denominator in k_re calculation. Using fallback stiffness." << std::endl;
+                            un_ro -= dn_;
+                            denom = un_hist_comp - un_ro;
+                        }                 
+                        //Second check: if denom is still too small, avoid division
+                        if (std::abs(denom) < 1e-16) {
+                            // Fallback option: set k_re to initial stiffness or a safe small number
+                            k_re = kn_initial_;  // or k_re = 1e6; or skip update entirely
+                        }
+                        else {
+                            k_re = (beta * peak_normal - fm_ro) / denom;
+                        }
                         double fm_re = fm_ro + k_re * (un_current - un_ro);
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm_re * s->area_;
@@ -718,27 +728,26 @@ namespace jmodels
             if (f2 >= 0.0)
             {
                 shearCorrection(s, &IPlas, fsm, fsmax,usel);
-                if (s->normal_force_ > 0.0) {
+                if (s->normal_disp_ < 0.0) {
+                        //Check f3
+                        double f3;
+                        f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+                        if (f3 >= 0.0) {
+                            compCorrection(s, &IPlas, comp);
+                        }                   
+                }
+            }// if (f2)
+            //Check compressive failure (compressive cap)
+            if (s->normal_disp_ < 0.0) {
                     //Check f3
                     double f3;
                     f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
                     if (f3 >= 0.0) {
                         compCorrection(s, &IPlas, comp);
-                    }
-                }
-            }// if (f2)
-            //Check compressive failure (compressive cap)
-            if (s->normal_force_ > 0.0) {
-                double f3;
-                f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-                //If it violates the yield criterion for compression
-                if (f3 >= 0.0)
-                {
-                    compCorrection(s, &IPlas, comp);
-                    if (f2 >= 0.0) {
-                        shearCorrection(s, &IPlas, fsm, fsmax,usel);
-                    }
-                }
+                        if (f2 >= 0.0) {
+                            shearCorrection(s, &IPlas, fsm, fsmax, usel);
+                        }
+                    }                                                
             }//s->normal_disp < 0.0
         } // if (!tenflg)
 
