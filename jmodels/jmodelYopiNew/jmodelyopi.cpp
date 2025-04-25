@@ -307,9 +307,11 @@ namespace jmodels
     void JModelYopi::initialize(uint32 dim, State* s)
     {
         JointModel::initialize(dim, s);
-        tan_friction_ = tan(friction_ * dDegRad);
+        if (dilation_)tan_friction_ = tan((friction_+dilation_) * dDegRad);
+        else tan_friction_ = tan(friction_ * dDegRad);        
         tan_res_friction_ = tan(res_friction_ * dDegRad);
         tan_dilation_ = tan(dilation_ * dDegRad);
+        dilation_current = dilation_;
 
         //Initialize parameter for the compressive cap
         R_yield = 0.0;
@@ -697,22 +699,24 @@ namespace jmodels
                 
                 //Store the current friction angle
                 double tc = 0.0;
-                double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
+
+                /*double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
                 if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
-                else friction_current_ = atan(tan_friction_) / dDegRad;
-                tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+                else friction_current_ = atan(tan_friction_) / dDegRad;*/
+                friction_current_ = atan(tan_friction_) / dDegRad;
+                tc = cc * s->area_ + s->normal_force_ * tan_friction_;
                 if (dilation_){
-                    double tan_dilation_c = tan_dilation_ * (1 - s->shear_disp_.mag() / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));
-                    tc = cc * s->area_ + s->normal_force_ * tan_dilation_c;    
+                    double tan_dilation_c = dilation_ * (1 - s->shear_disp_.mag() / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));
+                    tc = cc * s->area_ + s->normal_force_ * tan((friction_ + tan_dilation_c) * dDegRad);
                     double dusm = s->shear_disp_inc_.mag();
                     double dil = 0.0;
-                    if (!s->state_) dil = tan_dilation_;
+                    if (!s->state_) dil = tan_friction_;
                     else
                     {
-                        dil = tan_dilation_ * (1 - (s->shear_disp_.mag()) / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));;
-                        dilation_current = atan(dil) / dDegRad;
+                        dil = dilation_ * (1 - (s->shear_disp_.mag()) / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));;
+                        dilation_current = dil;
                     }
-                    un_dilatant += dil * dusm;
+                    un_dilatant += tan((friction_ + dil)*dDegRad) * dusm;
                     s->normal_force_ += kn_ * s->area_ * dil * dusm;
                 }                
                 fsmax = tc;
