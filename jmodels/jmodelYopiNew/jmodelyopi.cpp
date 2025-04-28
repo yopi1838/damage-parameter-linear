@@ -455,8 +455,8 @@ namespace jmodels
                 }
             }
             else {
-                //double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
-                double un_plastic_rat = 0.25 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
+                double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
+                //double un_plastic_rat = 0.25 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
                 //double un_plastic_rat = 1.1905*(un_hist_comp / ucel_) + 0.0311;
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
@@ -471,14 +471,9 @@ namespace jmodels
                         double B3 = 2 - (k2 / Es) * (1 + B1);
                         double B2 = B1 - B3;
                         double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
-                        auto calc_fm = [&](double Xeta) -> double {
-                            double num = B1 * Xeta + Xeta * Xeta;
-                            double den = 1.0 + B2 * Xeta + B3 * Xeta * Xeta;
-                            double ratio = (den > 1e-12) ? num / den : 0.0;
-                            double fm = peak_normal + (0.05 - peak_normal) * ratio;
-                            return std::clamp(fm, 0.0, compression_);
-                            };                                                
-                        double fm = calc_fm(Xeta);   
+                        double fm = 0.0;
+                        fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+                        if (fm < 0.0) fm = 0.0;   
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
@@ -493,10 +488,10 @@ namespace jmodels
                         fm_ro = 0.0;
                         kna = kn_ * s->area_;
                         ////tension
-                        /*s->normal_force_inc_ = kna * dn_;
-                        s->normal_force_ += s->normal_force_inc_;*/
-                        s->normal_force_inc_ = 0;
-                        s->normal_force_ = 0;
+                        s->normal_force_inc_ = kna * dn_;
+                        s->normal_force_ += s->normal_force_inc_;
+                        /*s->normal_force_inc_ = 0;
+                        s->normal_force_ = 0;*/
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 2");
                         }
@@ -525,7 +520,7 @@ namespace jmodels
                         //Second check: if denom is still too small, avoid division
                         if (std::abs(denom) < 1e-12) {
                             // Fallback option: set k_re to initial stiffness or a safe small number
-                            k_re = kn_initial_;  // or k_re = 1e6; or skip update entirely
+                            k_re = kn_comp_;  // or k_re = 1e6; or skip update entirely
                             fm_re = fm_ro;
                         }
                         else {
