@@ -394,7 +394,7 @@ namespace jmodels
         double fn0 = s->normal_force_;
         double uel_limit = compression_ / kn_comp_ / 3.0;
         double sn_ = s->normal_force_ / s->area_; //negative in tension
-        double dn_ = s->normal_disp_inc_ * (-1.0); //positive in compression
+        double dn_ = s->normal_disp_inc_ * (-1.0); //negative in tension
         double un_current = s->normal_disp_ * (-1.0);
         //Calculate elastic limit
         double fel_limit = compression_ / 3.0;
@@ -403,7 +403,7 @@ namespace jmodels
         double dsn_ = kn_initial_ * dn_;
 
         //Define the hardening part of the compressive strength here
-        if (un_current < 0.0) {
+        if (s->normal_force_ < 0.0) {
             if (un_current + dn_ <= un_hist_ten && dn_ < 0.0)
             {
                 un_hist_ten = s->normal_disp_ * (-1.0);
