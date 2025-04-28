@@ -392,12 +392,12 @@ namespace jmodels
 
         // normal force
         double fn0 = s->normal_force_;
-        double uel_limit = compression_ / kn_comp_ / 5.0;
+        double uel_limit = compression_ / kn_comp_ / 3.0;
         double sn_ = s->normal_force_ / s->area_; //negative in tension
         double dn_ = s->normal_disp_inc_ * (-1.0); //positive in compression
         double un_current = s->normal_disp_ * (-1.0);
         //Calculate elastic limit
-        double fel_limit = compression_ / 5.0;
+        double fel_limit = compression_ / 3.0;
         double fpeak = compression_;
         double ftemp = 0.0;
         double dsn_ = kn_initial_ * dn_;
