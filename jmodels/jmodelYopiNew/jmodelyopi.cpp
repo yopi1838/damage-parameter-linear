@@ -461,7 +461,7 @@ namespace jmodels
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
                     //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    if (un_current + dn_ >= un_hist_comp * 98) pertFlag = 2;
+                    if (un_current + dn_ >= un_hist_comp * 0.98) pertFlag = 2;
                     else pertFlag = 0;
                     if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
                         double k1 = 1.5 * kn_comp_;
@@ -483,7 +483,7 @@ namespace jmodels
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
                         fm_ro = fm;
-                        if (un_current + dn_ < un_hist_comp * 9 && dn_ < 0.0) un_ro = un_current+dn_; //Record the current displacement for unloading purposes       
+                        if (un_current + dn_ < un_hist_comp * 0.9 && dn_ < 0.0) un_ro = un_current+dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1;
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 5");
@@ -521,22 +521,17 @@ namespace jmodels
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
-
-                        //First correction attempt to un_ro
-                        if (std::abs(denom) < 1e-16) {
-                            std::cerr << "Warning: Small denominator in k_re calculation. Using fallback stiffness." << std::endl;
-                            un_ro -= dn_;
-                            denom = un_hist_comp - un_ro;
-                        }                 
+                        double fm_re = 0.0;
                         //Second check: if denom is still too small, avoid division
-                        if (std::abs(denom) < 1e-16) {
+                        if (std::abs(denom) < 1e-12) {
                             // Fallback option: set k_re to initial stiffness or a safe small number
                             k_re = kn_initial_;  // or k_re = 1e6; or skip update entirely
+                            fm_re = fm_ro;
                         }
                         else {
                             k_re = (beta * peak_normal - fm_ro) / denom;
+                            fm_re = fm_ro + k_re * (un_current - un_ro);
                         }
-                        double fm_re = fm_ro + k_re * (un_current - un_ro);
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm_re * s->area_;
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
