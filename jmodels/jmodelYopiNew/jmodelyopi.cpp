@@ -483,7 +483,7 @@ namespace jmodels
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
                         fm_ro = fm;
-                        if (un_current + dn_ < un_hist_comp * 0.9 && dn_ < 0.0) un_ro = un_current+dn_; //Record the current displacement for unloading purposes       
+                        un_ro = un_current+dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1;
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 5");
