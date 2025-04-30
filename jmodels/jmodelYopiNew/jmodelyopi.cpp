@@ -339,7 +339,7 @@ namespace jmodels
 
         if (dilation_ && !delta) delta = 2;
         if (!dilation_) {
-            delta = 1.0;
+            delta = 0.0;
             un_dilatant = 0.0;
         }
 
@@ -403,7 +403,7 @@ namespace jmodels
         double dsn_ = kn_initial_ * dn_;
 
         //Define the hardening part of the compressive strength here
-        if (s->normal_force_ < 0.0) {
+        if (un_current < 0.0) {
             if (un_current + dn_ <= un_hist_ten && dn_ < 0.0)
             {
                 un_hist_ten = s->normal_disp_ * (-1.0);
@@ -488,10 +488,10 @@ namespace jmodels
                         fm_ro = 0.0;
                         kna = kn_ * s->area_;
                         ////tension
-                        s->normal_force_inc_ = kna * dn_;
-                        s->normal_force_ += s->normal_force_inc_; //Debugged
-                        /*s->normal_force_inc_ = 0;
-                        s->normal_force_ = 0;*/
+                        //s->normal_force_inc_ = kna * dn_;
+                        //s->normal_force_ += s->normal_force_inc_; //Debugged
+                        s->normal_force_inc_ = 0;
+                        s->normal_force_ = 0;
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 2");
                         }
@@ -662,10 +662,13 @@ namespace jmodels
             s->shear_force_ += s->shear_force_inc_;
 
             //Because the normal force is already in negative anyway, we don't have to change the signs
-            double fsmax = (cohesion_ * s->area_ + tan_friction_ * s->normal_force_);
+            double dil_0 = 0.0;
+            if (dilation_) dil_0 = dilation_;
+            else dil_0 = 0.0;
+            double fsmax = (cohesion_ * s->area_ + tan((friction_ + dil_0) * dDegRad) * s->normal_force_);
             double fsm = s->shear_force_.mag();
             double f2;
-            double tmax = cohesion_ + tan_friction_ * s->normal_force_ / s->area_;
+            double tmax = cohesion_ + tan((friction_ + dil_0) * dDegRad) * s->normal_force_ / s->area_;
             double usel = tmax / ks_;
             if (fsmax < 0.0) fsmax = 0.0;
             if (s->state_) {
@@ -693,21 +696,17 @@ namespace jmodels
                 /*double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
                 if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
                 else friction_current_ = atan(tan_friction_) / dDegRad;*/
-                friction_current_ = atan(tan_friction_) / dDegRad;
-                tc = cc * s->area_ + s->normal_force_ * tan_friction_;
+                friction_current_ = (friction_ + dil_0);
+                tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
                 if (dilation_){
-                    double tan_dilation_c = dilation_ * (1 - s->shear_disp_.mag() / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));
-                    tc = cc * s->area_ + s->normal_force_ * tan((friction_ + tan_dilation_c) * dDegRad);
+                    double dilation_c = dilation_ * (1 - (s->shear_disp_.mag() - usel)/s_zero_dilation_) * exp(-delta * ((s->shear_disp_.mag() - usel)));
+                    if (dilation_c < 0.0) dilation_c = 0.0;
+                    tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dilation_c) * dDegRad);
+                    dilation_current = dilation_c;
+                    friction_current_ = (friction_ + dilation_c);
                     double dusm = s->shear_disp_inc_.mag();
-                    double dil = 0.0;
-                    if (!s->state_) dil = tan_friction_;
-                    else
-                    {
-                        dil = dilation_ * (1 - (s->shear_disp_.mag()) / (s_zero_dilation_)) * exp(-delta * ((s->shear_disp_.mag()) / (s_zero_dilation_)));;
-                        dilation_current = dil;
-                    }
-                    un_dilatant += tan((friction_ + dil)*dDegRad) * dusm;
-                    s->normal_force_ += kn_ * s->area_ * dil * dusm;
+                    un_dilatant += tan(dilation_c * dDegRad) * dusm;
+                    s->normal_force_ += kn_ * s->area_ * tan( dilation_c * dDegRad) * dusm;
                 }                
                 fsmax = tc;
                 f2 = fsm - tc;
@@ -715,7 +714,7 @@ namespace jmodels
             else {
                 f2 = fsm - fsmax;
                 cc = cohesion_;
-                friction_current_ = atan(tan_friction_) / dDegRad;
+                friction_current_ = atan(tan_friction_+ dil_0) / dDegRad;
             }// if (state)
 
             //Check if slip
