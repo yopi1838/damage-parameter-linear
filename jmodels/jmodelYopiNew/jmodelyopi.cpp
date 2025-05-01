@@ -722,25 +722,25 @@ namespace jmodels
             {
                 shearCorrection(s, &IPlas, fsm, fsmax,usel);
                 if (s->normal_disp_ < 0.0) {
-                        //Check f3
-                        double f3;
-                        f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-                        if (f3 >= 0.0) {
-                            compCorrection(s, &IPlas, comp);
-                        }                   
-                }
-            }// if (f2)
-            //Check compressive failure (compressive cap)
-            if (s->normal_disp_ < 0.0) {
                     //Check f3
                     double f3;
                     f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
                     if (f3 >= 0.0) {
                         compCorrection(s, &IPlas, comp);
-                        if (f2 >= 0.0) {
-                            shearCorrection(s, &IPlas, fsm, fsmax, usel);
-                        }
-                    }                                                
+                    }                   
+                }
+            }// if (f2)
+            //Check compressive failure (compressive cap)
+            if (s->normal_disp_ < 0.0) {
+                //Check f3
+                double f3;
+                f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
+                if (f3 >= 0.0) {
+                    compCorrection(s, &IPlas, comp);
+                    if (f2 >= 0.0) {
+                        shearCorrection(s, &IPlas, fsm, fsmax, usel);
+                    }
+                }                                                
             }//s->normal_disp < 0.0
         } // if (!tenflg)
 
