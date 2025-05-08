@@ -311,7 +311,7 @@ namespace jmodels
         else tan_friction_ = tan(friction_ * dDegRad);        
         tan_res_friction_ = tan(res_friction_ * dDegRad);
         tan_dilation_ = tan(dilation_ * dDegRad);
-        dilation_current = dilation_;
+        //dilation_current = dilation_;
 
         //Initialize parameter for the compressive cap
         R_yield = 0.0;
@@ -699,14 +699,22 @@ namespace jmodels
                 friction_current_ = (friction_ + dil_0);
                 tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
                 if (dilation_){
-                    double dilation_c = dilation_ * (1 - (s->shear_disp_.mag() - usel)/s_zero_dilation_) * exp(-delta * ((s->shear_disp_.mag() - usel)));
-                    if (dilation_c < 0.0) dilation_c = 0.0;
-                    tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dilation_c) * dDegRad);
-                    dilation_current = dilation_c;
-                    friction_current_ = (friction_ + dilation_c);
-                    double dusm = s->shear_disp_inc_.mag();
-                    un_dilatant += tan(dilation_c * dDegRad) * dusm;
-                    s->normal_force_ += kn_ * s->area_ * tan( dilation_c * dDegRad) * dusm;
+                    double usm = s->shear_disp_.mag()-usel;
+                    if (usm < s_zero_dilation_) {
+                        double dilation_c = tan_dilation_ *(1- (usm) / s_zero_dilation_) * exp(-delta * ((usm) / s_zero_dilation_));
+                        if (dilation_c < 0.0) dilation_c = 0.0;
+                        tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (atan(dilation_c) / dDegRad)) * dDegRad);
+                        dilation_current = (atan(dilation_c) / dDegRad);
+                        friction_current_ = (friction_ + (atan(dilation_c) / dDegRad));
+                        double dusm = s->shear_disp_inc_.mag();
+                        un_dilatant += dilation_c * dusm;
+                        s->normal_force_ += kn_ * s->area_ * dilation_c * dusm ;
+                    }
+                    else {
+                        tc = cc * s->area_ + s->normal_force_ * tan((friction_) * dDegRad);
+                        dilation_current = 0.0;
+                        friction_current_ = (friction_ / dDegRad);
+                    }
                 }                
                 fsmax = tc;
                 f2 = fsm - tc;
