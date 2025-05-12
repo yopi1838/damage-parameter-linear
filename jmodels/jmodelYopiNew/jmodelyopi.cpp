@@ -512,7 +512,7 @@ namespace jmodels
                 else {                           
                     if (reloadFlag ==1 && dn_ >= 0.0) {                        
                         //recalculate un_hist_comp
-                        double beta = 1.0;
+                        double beta = 0.8;
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
@@ -527,8 +527,39 @@ namespace jmodels
                             k_re = (beta * peak_normal - fm_ro) / denom;
                             fm_re = fm_ro + k_re * (un_current - un_ro);
                         }
-                        s->normal_force_inc_ = 0;
-                        s->normal_force_ = fm_re * s->area_;
+
+                        //Only activate the envelope-based cap if dc>0
+
+                        /*s->normal_force_inc_ = 0;
+                        s->normal_force_ = fm_re * s->area_;*/
+                        if (dc > 0.0) {
+                            double fc_env = compression_ * (1.0 - dc);  // already used elsewhere
+                            if (fm_re >= fc_env) {
+                                s->normal_force_ = fc_env * s->area_;
+                                fc_current = fc_env;
+                            }
+                            else {
+                                s->normal_force_ = fm_re * s->area_;
+                                fc_current = fm_re;
+                            }
+                        }
+                        else{
+                            // Compute envelope value at current displacement
+                            double x_new = (un_current - uel_limit) / ucel_;
+                            double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
+                            double fc_env = ftempNew;
+                            // Final decision: follow envelope if fm_re exceeds it
+                            s->normal_force_inc_ = 0;
+                            if (fm_re >= fc_env) {
+                                s->normal_force_ = fc_env * s->area_;
+                                fc_current = fc_env;
+                            }
+                            else {
+                                s->normal_force_ = fm_re * s->area_;
+                                fc_current = fm_re;
+                            }
+
+                        }
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered in compressive branch reloading.");
                         }
