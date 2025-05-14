@@ -392,15 +392,16 @@ namespace jmodels
 
         // normal force
         double fn0 = s->normal_force_;
-        double uel_limit = compression_ / kn_comp_ / 3.0;
+        double uel_limit = compression_ / kn_comp_ / 5.0;
         double sn_ = s->normal_force_ / s->area_; //negative in tension
         double dn_ = s->normal_disp_inc_ * (-1.0); //negative in tension
         double un_current = s->normal_disp_ * (-1.0);
         //Calculate elastic limit
-        double fel_limit = compression_ / 3.0;
+        double fel_limit = compression_ / 5.0;
         double fpeak = compression_;
         double ftemp = 0.0;
         double dsn_ = kn_initial_ * dn_;
+        double comp = 0.0;
 
         //Define the hardening part of the compressive strength here
         if (un_current < 0.0) {
@@ -455,8 +456,8 @@ namespace jmodels
                 }
             }
             else {
-                double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
-                //double un_plastic_rat = 0.25 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
+                //double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
+                double un_plastic_rat = 0.47 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
                 //double un_plastic_rat = 1.1905*(un_hist_comp / ucel_) + 0.0311;
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
@@ -465,7 +466,7 @@ namespace jmodels
                     else pertFlag = 0;
                     if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
                         double k1 = 1.5 * kn_comp_;
-                        double k2 = 0.1 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
+                        double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
                         double B1 = k1 / Es;
                         double B3 = 2 - (k2 / Es) * (1 + B1);
@@ -510,13 +511,22 @@ namespace jmodels
 
                 }
                 else {                           
-                    if (reloadFlag ==1 && dn_ >= 0.0) {                        
+                    if (reloadFlag ==1) {
                         //recalculate un_hist_comp
-                        double beta = 0.8;
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
                         double fm_re = 0.0;
+                        double beta = 1.0;
+                        double un_rec = 0.0; //normalized recovery displacement
+                        //Calculate dynamically the beta coefficient according to Facconi                        
+                        un_rec = (un_hist_comp - un_ro) / ucel_;
+                        if (un_hist_comp < ucel_) {
+                            beta = 1 / (1 + 0.20 * (pow(un_rec, 0.5)));
+                        }
+                        else {
+                            beta = 1 / (1 + 0.45 * (pow(un_rec, 0.2)));
+                        }
                         //Second check: if denom is still too small, avoid division
                         if (std::abs(denom) < 1e-12) {
                             // Fallback option: set k_re to initial stiffness or a safe small number
@@ -529,36 +539,33 @@ namespace jmodels
                         }
 
                         //Only activate the envelope-based cap if dc>0
-
                         /*s->normal_force_inc_ = 0;
                         s->normal_force_ = fm_re * s->area_;*/
                         if (dc > 0.0) {
                             double fc_env = compression_ * (1.0 - dc);  // already used elsewhere
-                            if (fm_re >= fc_env) {
-                                s->normal_force_ = fc_env * s->area_;
-                                fc_current = fc_env;
-                            }
-                            else {
+                            if (fm_re < fc_env) {
                                 s->normal_force_ = fm_re * s->area_;
                                 fc_current = fm_re;
                             }
+                            else {
+                                reloadFlag = 0;
+                            }
+                            comp = fc_env * s->area_;
                         }
-                        else{
+                        if (dc == 0.0){
                             // Compute envelope value at current displacement
                             double x_new = (un_current - uel_limit) / ucel_;
                             double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
                             double fc_env = ftempNew;
                             // Final decision: follow envelope if fm_re exceeds it
                             s->normal_force_inc_ = 0;
-                            if (fm_re >= fc_env) {
-                                s->normal_force_ = fc_env * s->area_;
-                                fc_current = fc_env;
-                            }
-                            else {
+                            if (fm_re < fc_env) {
                                 s->normal_force_ = fm_re * s->area_;
                                 fc_current = fm_re;
                             }
-
+                            else {
+                                reloadFlag = 0;
+                            }
                         }
                         if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered in compressive branch reloading.");
@@ -597,14 +604,16 @@ namespace jmodels
         }
 
         double ten;
-        double comp = 0.0;
+        //double comp = 0.0;
         uel = tension_ / kn_; //elastic limit on tension    
+        if (!res_comp_) res_comp_ = 0.0;
         double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
         double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
         double kappa_ = ucel_ * compression_;
         double gamma_ = 2.0;
         m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
             + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
+        if (m_ < 1.5) m_ = 1.5;
         double ucul_ = m_ * ucel_;
 
         //Define the softening on compressive strength
@@ -846,13 +855,11 @@ namespace jmodels
         s->state_ |= comp_now;
         //Calculate the radial distance from point to the origin
         x = (s->normal_force_); //normal force would be larger than the position of Cn
-        if (x < 0.0) {
-            throw std::runtime_error("solveQuadratic: Normal force should be in compression.");
-        }
+        
         y = s->shear_force_.mag();
               
         //Calculate the gradient intercept here
-        if (x) gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
+        if (x>0.0) gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
         else gradient = s->shear_force_.mag();
 
         //Find the intercept from the gradient at the yield surface
