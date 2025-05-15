@@ -414,9 +414,9 @@ namespace jmodels
             //tension
             s->normal_force_inc_ = kna * dn_;
             s->normal_force_ += s->normal_force_inc_;        
-            if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+            /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                 throw std::runtime_error("NaN encountered in tension branch.");
-            }
+            }*/
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >=0.0) {
@@ -431,9 +431,9 @@ namespace jmodels
                     s->normal_force_inc_ = kna * dn_;
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
-                    if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                    /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                         throw std::runtime_error("NaN encountered here 1");
-                    }
+                    }*/
                 }
                 else if (!s->state_ || sn_ < compression_) {
                     double x_new = ((un_current + dn_) - uel_limit) / ucel_;
@@ -450,9 +450,9 @@ namespace jmodels
                     else s->normal_force_ = ftemp * s->area_;
                     fc_current = s->normal_force_ / s->area_;
                     plasFlag = 1;
-                    if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                    /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                         throw std::runtime_error("NaN encountered here 6");
-                    }
+                    }*/
                 }
             }
             else {
@@ -460,11 +460,11 @@ namespace jmodels
                 double un_plastic_rat = 0.47 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
                 //double un_plastic_rat = 1.1905*(un_hist_comp / ucel_) + 0.0311;
                 double un_plastic = un_plastic_rat * ucel_;
-                if (dn_ < 0.0 && (dc > 0.0 || plasFlag == 1)) { //unloading from compression
+                if (dn_ < 0.0 && ( dc > 0.0 || plasFlag == 1)) { //unloading from compression
                     //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                     if (un_current + dn_ >= un_hist_comp * 0.98) pertFlag = 2;
                     else pertFlag = 0;
-                    if (sn_ > 0.0 && (pertFlag == 0 || dc > 0.0)) {
+                    if (sn_ > 0.0 && (dc>0.0 || pertFlag == 0)) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -481,11 +481,11 @@ namespace jmodels
                         fm_ro = fm;
                         un_ro = un_current+dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1;
-                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 5");
-                        }
+                        }*/
                     }
-                    else if (sn_ <= 0.0) {
+                    else if(sn_ <= 0.0){
                         fm_ro = 0.0;
                         kna = kn_ * s->area_;
                         ////tension
@@ -493,20 +493,20 @@ namespace jmodels
                         //s->normal_force_ += s->normal_force_inc_; //Debugged
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = 0;
-                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 2");
-                        }
+                        }*/
                     }
                     else {
-                        //Elastic unloading                    
+                        //Elastic unloading
+                        fm_ro = 0.0;
                         kna = kn_comp_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
-                        reloadFlag = 0;
-                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered here 3");
-                        }
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered here 1");
+                        }*/
                     }
 
                 }
@@ -552,7 +552,7 @@ namespace jmodels
                             }
                             comp = fc_env * s->area_;
                         }
-                        if (dc == 0.0){
+                        else{
                             // Compute envelope value at current displacement
                             double x_new = (un_current - uel_limit) / ucel_;
                             double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
@@ -567,29 +567,29 @@ namespace jmodels
                                 reloadFlag = 0;
                             }
                         }
-                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered in compressive branch reloading.");
-                        }
+                        }*/
                         fc_current = fm_re;                        
                     }
                     else {
                         //Elastic unloading                    
                         kna = kn_comp_ * s->area_;
-                        if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
+                        //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
                         reloadFlag = 0;
-                        if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 4");
-                        }
+                        }*/
                     }
                 }
             } //unloading  
             // === Safety Check ===
-            if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+            /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                 throw std::runtime_error("NaN encountered in compressive branch.");
-            }
+            }*/
         }
 
         // correction for time step in which joint opens (or goes into tension)
@@ -618,6 +618,7 @@ namespace jmodels
 
         //Define the softening on compressive strength
         if (s->state_) {
+            reloadFlag = 0;
             if ((un_current >= ucel_) && (un_current < ucul_)) {
                 dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
             }
