@@ -89,6 +89,8 @@ namespace jmodels
         double delta; //dilatancy gradient
         double dilation_current;
         double un_dilatant;
+        double dil_hist;
+        double ddil;
   };
 } // namespace models
 

@@ -100,7 +100,9 @@ namespace jmodels
         reloadFlag(0),
         delta(0),
         dilation_current(0),
-        un_dilatant(0)
+        un_dilatant(0),
+		dil_hist(0),
+        ddil(0)
     {
     }
 
@@ -135,7 +137,7 @@ namespace jmodels
             "table-dt    ,table-ds ,"
             "tensile-disp-plastic    ,shear-disp-plastic ,"
             "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist,delta,dilation_current,un_dilatant");
+            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist,delta,dilation_current,un_dilatant,dil_hist,ddil");
     }
 
     string JModelYopi::getStates() const
@@ -191,6 +193,8 @@ namespace jmodels
         case 42: return delta;
         case 43: return dilation_current;
         case 44: return un_dilatant;
+        case 45: return dil_hist;
+        case 46: return ddil;
         }
         return 0.0;
     }
@@ -244,6 +248,8 @@ namespace jmodels
         case 42: delta = prop.to<double>(); break;
         case 43: dilation_current = prop.to<double>(); break;
         case 44: un_dilatant = prop.to<double>(); break;
+		case 45: dil_hist = prop.to<double>(); break;
+		case 46: ddil = prop.to<double>(); break;
         }
     }
 
@@ -252,6 +258,7 @@ namespace jmodels
     static const uint32 Dqkn = 2;
     static const uint32 Dqc = 3;
     static const uint32 D_un_hist = 4;
+    DVect3 last_shear_dir_; // previously used shear direction
 
     void JModelYopi::copy(const JointModel* m)
     {
@@ -302,6 +309,8 @@ namespace jmodels
         delta = mm->delta;
         dilation_current = mm->dilation_current;
         un_dilatant = mm->un_dilatant;
+		dil_hist = mm->dil_hist;
+		ddil = mm->ddil;
     }
 
     void JModelYopi::initialize(uint32 dim, State* s)
@@ -311,7 +320,8 @@ namespace jmodels
         else tan_friction_ = tan(friction_ * dDegRad);        
         tan_res_friction_ = tan(res_friction_ * dDegRad);
         tan_dilation_ = tan(dilation_ * dDegRad);
-        //dilation_current = dilation_;
+        dilation_current = dilation_;
+        last_shear_dir_ = DVect3(0.0, 0.0, 0.0);
 
         //Initialize parameter for the compressive cap
         R_yield = 0.0;
@@ -463,7 +473,7 @@ namespace jmodels
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && ( plasFlag == 1)) { //unloading from compression
                     //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    if (un_current + dn_ >= un_hist_comp * 0.98) pertFlag = 2;
+                    if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
                     else pertFlag = 0;
                     if (sn_ > 0.0 && (pertFlag == 0)) {
                         double k1 = 1.5 * kn_comp_;
@@ -578,22 +588,13 @@ namespace jmodels
                         }*/
                         fc_current = fm_re;                        
                     }
-                    else if (!s->state_){
+                    else {
                         //Elastic unloading                    
                         kna = kn_comp_ * s->area_;
-                        //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
                         reloadFlag = 0;
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered here 4");
-                        }*/
-                    }
-                    else {
-                        s->normal_force_inc_ = 0.0;
-                        reloadFlag = 0;
-                        jumptoDC = true;
                     }
                 }
             } //unloading  
@@ -750,21 +751,24 @@ namespace jmodels
                 friction_current_ = (friction_ + dil_0);
                 tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
                 if (dilation_){
-                    double usm = s->shear_disp_.mag()-usel;
-                    if (usm < s_zero_dilation_) {
-                        double dilation_c = tan_dilation_ *(1- (usm) / s_zero_dilation_) * exp(-delta * ((usm) / s_zero_dilation_));
+                    double usm = s->shear_disp_.mag() - usel;
+                    if (usm<s_zero_dilation_) {
+                        ddil = (1.0 - (usm / s_zero_dilation_)) * exp(-delta * (usm / s_zero_dilation_));             // Update history to current minimum
+
+                        double dilation_c = tan_dilation_ * ddil;
                         if (dilation_c < 0.0) dilation_c = 0.0;
+
                         tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (atan(dilation_c) / dDegRad)) * dDegRad);
-                        dilation_current = (atan(dilation_c) / dDegRad);
-                        friction_current_ = (friction_ + (atan(dilation_c) / dDegRad));
+                        dilation_current = atan(dilation_c) / dDegRad;
+                        friction_current_ = friction_ + dilation_current;
                         double dusm = s->shear_disp_inc_.mag();
                         un_dilatant += dilation_c * dusm;
-                        s->normal_force_ += kn_ * s->area_ * dilation_c * dusm ;
+                        s->normal_force_ += kn_ * s->area_ * dilation_c * dusm;
                     }
                     else {
-                        tc = cc * s->area_ + s->normal_force_ * tan((friction_) * dDegRad);
+                        tc = cc * s->area_ + s->normal_force_ * tan(friction_ * dDegRad);
                         dilation_current = 0.0;
-                        friction_current_ = (friction_ / dDegRad);
+                        friction_current_ = friction_ / dDegRad;
                     }
                 }                
                 fsmax = tc;
