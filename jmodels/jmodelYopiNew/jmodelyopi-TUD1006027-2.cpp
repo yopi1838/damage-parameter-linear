@@ -411,37 +411,29 @@ namespace jmodels
         double fel_limit = compression_ / 5.0;
         double fpeak = compression_;
         double ftemp = 0.0;
-        //double dsn_ = kn_initial_ * dn_;
+        double dsn_ = kn_initial_ * dn_;
         //double comp = 0.0;
 
         //Define the hardening part of the compressive strength here
         if (un_current < 0.0) {
-            if (un_current + dn_ <= un_hist_ten)
+            if (un_current + dn_ <= un_hist_ten && dn_ < 0.0)
             {
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
             }
-            if (dn_ >= 0.0) {
-                if (sn_ >= 0.0) s->normal_force_ = 0.0;
-                else {
-                    kna = kn_ * s->area_;
-                    //tension
-                    s->normal_force_inc_ = kna * dn_;
-                    s->normal_force_ += s->normal_force_inc_;
-                }
-            }
-            else {
-                kna = kn_ * s->area_;
-                //tension
-                s->normal_force_inc_ = kna * dn_;
-                s->normal_force_ += s->normal_force_inc_;
-            }
+            kna = kn_ * s->area_;
+            //tension
+            s->normal_force_inc_ = kna * dn_;
+            s->normal_force_ += s->normal_force_inc_;        
+            /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                throw std::runtime_error("NaN encountered in tension branch.");
+            }*/
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >=0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            if ((sn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
+            if ((sn_+dsn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
                 //un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
@@ -508,10 +500,10 @@ namespace jmodels
                         fm_ro = 0.0;
                         kna = kn_ * s->area_;
                         ////tension
-                        s->normal_force_inc_ = kna * dn_;
-                        s->normal_force_ += s->normal_force_inc_; //Debugged
-                        //s->normal_force_inc_ = 0;
-                        //s->normal_force_ = 0;
+                        //s->normal_force_inc_ = kna * dn_;
+                        //s->normal_force_ += s->normal_force_inc_; //Debugged
+                        s->normal_force_inc_ = 0;
+                        s->normal_force_ = 0;
                         reloadFlag = 0;
                         /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 2");
@@ -533,7 +525,7 @@ namespace jmodels
 
                 }
                 else {                           
-                    if (reloadFlag ==1) {
+                    if (reloadFlag ==1 &&dn_>= 0.0) {
                         //recalculate un_hist_comp
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
@@ -752,14 +744,11 @@ namespace jmodels
                 
                 //Store the current friction angle
                 double tc = 0.0;
-
-                /*double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
-                if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
-                else friction_current_ = atan(tan_friction_) / dDegRad;*/
+                
                 friction_current_ = (friction_ + dil_0);
                 tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
                 if (dilation_){
-                    double usm = s->shear_disp_.mag();
+                    double usm = s->shear_disp_.mag();                    
                     if (usm<s_zero_dilation_) {
                         ddil = (1.0 - (usm / s_zero_dilation_)) * exp(-delta * (usm / s_zero_dilation_));             // Update history to current minimum                        
                         double dilation_c = tan_dilation_ * ddil;
@@ -784,11 +773,10 @@ namespace jmodels
                     }
                 }
                 else {
-                    double tan_friction_c = resamueff + (tan_friction_ - resamueff) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
+                    double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
                     if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
                     else friction_current_ = atan(tan_friction_) / dDegRad;
                     tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-
                 }
                 fsmax = tc;
                 f2 = fsm - tc;
@@ -882,7 +870,8 @@ namespace jmodels
         y = s->shear_force_.mag();
               
         //Calculate the gradient intercept here
-        gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
+        if (x>0.0) gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
+        else gradient = s->shear_force_.mag();
 
         //Find the intercept from the gradient at the yield surface
         a = Cnn + Css * pow(gradient, 2);
