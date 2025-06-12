@@ -411,21 +411,10 @@ namespace jmodels
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
             }
-            if (dn_ >= 0.0) {
-                if (sn_ >= 0.0) s->normal_force_ = 0.0;
-                else {
-                    kna = kn_ * s->area_;
-                    //tension
-                    s->normal_force_inc_ = kna * dn_;
-                    s->normal_force_ += s->normal_force_inc_;
-                }
-            }
-            else {
-                kna = kn_ * s->area_;
-                //tension
-                s->normal_force_inc_ = kna * dn_;
-                s->normal_force_ += s->normal_force_inc_;
-            }
+            kna = kn_ * s->area_;
+            //tension
+            s->normal_force_inc_ = kna * dn_;
+            s->normal_force_ += s->normal_force_inc_;            
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >=0.0) {
@@ -523,7 +512,7 @@ namespace jmodels
 
                 }
                 else {                           
-                    if (reloadFlag ==1) {
+                    if (reloadFlag ==1&&dn_ >= 0.0) {
                         //recalculate un_hist_comp
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
