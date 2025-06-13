@@ -487,10 +487,10 @@ namespace jmodels
                         fm_ro = 0.0;
                         kna = kn_ * s->area_;
                         ////tension
-                        s->normal_force_inc_ = kna * dn_;
-                        s->normal_force_ += s->normal_force_inc_; //Debugged
-                        //s->normal_force_inc_ = 0;
-                        //s->normal_force_ = 0;
+                        //s->normal_force_inc_ = kna * dn_;
+                        //s->normal_force_ += s->normal_force_inc_; //Debugged
+                        s->normal_force_inc_ = 0;
+                        s->normal_force_ = 0;
                         reloadFlag = 0;
                         /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 2");
