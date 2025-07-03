@@ -4,35 +4,35 @@
 
 namespace jmodels
 {
-  class JModelYopi : public JointModel {
-  public:
-    JModelYopi();
-    virtual string         getName() const;
-    virtual string         getPluginName() const { return getName(); }
-    virtual string         getFullName() const;
-    virtual uint32         getMinorVersion() const;
-    virtual string         getProperties() const;
-    virtual string         getStates() const;
-    virtual base::Property getProperty(uint32 index) const;
-    virtual void           setProperty(uint32 index, const base::Property& p, uint32 restoreVersion = 0);
-    virtual JModelYopi *clone() const { return new JModelYopi(); }
-    virtual double         getMaxNormalStiffness() const { return kn_; }
-    virtual double         getMaxShearStiffness() const { return ks_; }
-    virtual void           copy(const JointModel *mod);
-    virtual void           run(uint32 dim,State *s); // If !isValid(dim) calls initialize(dim,s)
-    virtual void           initialize(uint32 dim,State *s); // calls setValid(dim)    
-    virtual double         solveQuadratic(double, double, double);
-    virtual void           compCorrection(State* s, uint32*IPlasticity, double&comp);
-    virtual void           shearCorrection(State* s, uint32* IPlasticity, double&fsm, double&fsmax, double& usel);
-    virtual void           tensionCorrection(State* s, uint32* IPlasticity, double& ten);
-    // Optional 
-    virtual double         getStrengthStressRatio(const double&, const DVect3&) const { return 10.0; }
-    virtual void           scaleProperties(const double&, const std::vector<uint32>&) {
-        throw std::runtime_error("Does not support property scaling");
-    }
-    virtual bool           supportsStrengthStressRatio() const { return false; }
-    virtual bool           supportsPropertyScaling() const { return false; }
-  private:
+    class JModelYopi : public JointModel {
+    public:
+        JModelYopi();
+        virtual string         getName() const;
+        virtual string         getPluginName() const { return getName(); }
+        virtual string         getFullName() const;
+        virtual uint32         getMinorVersion() const;
+        virtual string         getProperties() const;
+        virtual string         getStates() const;
+        virtual base::Property getProperty(uint32 index) const;
+        virtual void           setProperty(uint32 index, const base::Property& p, uint32 restoreVersion = 0);
+        virtual JModelYopi* clone() const { return new JModelYopi(); }
+        virtual double         getMaxNormalStiffness() const { return kn_; }
+        virtual double         getMaxShearStiffness() const { return ks_; }
+        virtual void           copy(const JointModel* mod);
+        virtual void           run(uint32 dim, State* s); // If !isValid(dim) calls initialize(dim,s)
+        virtual void           initialize(uint32 dim, State* s); // calls setValid(dim)    
+        virtual double         solveQuadratic(double, double, double);
+        virtual void           compCorrection(State* s, uint32* IPlasticity, double& comp);
+        virtual void           shearCorrection(State* s, uint32* IPlasticity, double& fsm, double& fsmax, double& usel);
+        virtual void           tensionCorrection(State* s, uint32* IPlasticity, double& ten);
+        // Optional 
+        virtual double         getStrengthStressRatio(const double&, const DVect3&) const { return 10.0; }
+        virtual void           scaleProperties(const double&, const std::vector<uint32>&) {
+            throw std::runtime_error("Does not support property scaling");
+        }
+        virtual bool           supportsStrengthStressRatio() const { return false; }
+        virtual bool           supportsPropertyScaling() const { return false; }
+    private:
         double kn_;
         double kn_initial_; //Initial value of the normal stiffness
         double ks_;
@@ -77,19 +77,21 @@ namespace jmodels
         double uel_; //The elastic limit in tension
         double un_hist_comp; // The maximum current displacement
         double peak_normal; //The current peaks in compression   
-        double ds_hist; 
+        double ds_hist;
         double un_ro;//reloading displacement
         double fm_ro; //reloading stress
         double un_hist_ten;
         uint32 reloadFlag; //reloading flag
-        uint32 plasFlag;    
+        uint32 plasFlag;
         double dc_hist;
-        uint32 pertFlag;      
+        uint32 pertFlag;
         double dt_hist;
         double delta; //dilatancy gradient
         double dilation_current;
         double un_dilatant;
-  };
+        double dil_hist;
+        double ddil;
+    };
 } // namespace models
 
 // EOF
