@@ -510,6 +510,19 @@ namespace jmodels
                             throw std::runtime_error("NaN encountered here 2");
                         }*/
                     }
+                    else {
+                        //Elastic unloading
+                        fm_ro = 0.0;
+                        un_ro = 0.0;
+                        kna = kn_comp_ * s->area_;
+                        s->normal_force_inc_ = kna * dn_;
+                        s->normal_force_ += s->normal_force_inc_;
+                        fc_current = s->normal_force_ / s->area_;
+                        reloadFlag = 0;
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered here 1");
+                        }*/
+                    }
                 }
                 else {
                     if (reloadFlag == 1 && dn_ >= 0.0) {
@@ -523,7 +536,7 @@ namespace jmodels
                         //Calculate dynamically the beta coefficient according to Facconi                        
                         un_rec = (un_hist_comp - un_ro) / ucel_;
                         if (un_hist_comp < ucel_) {
-                            beta = 1 / (1 + 0.20 * (pow(un_rec, 0.5)));
+                            beta = 1 / (1 + 0.10 * (pow(un_rec, 0.5)));
                         }
                         else {
                             beta = 1 / (1 + 0.45 * (pow(un_rec, 0.2)));
