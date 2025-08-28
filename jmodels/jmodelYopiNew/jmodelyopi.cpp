@@ -137,7 +137,7 @@ namespace jmodels
             "table-dt    ,table-ds ,"
             "tensile-disp-plastic    ,shear-disp-plastic ,"
             "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist,delta,dilation_current,un_dilatant,dil_hist,ddil");
+            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist,delta,dilation_current,un_dilatant,dil_hist,ddil,reloadFlag");
     }
 
     string JModelYopi::getStates() const
@@ -195,6 +195,7 @@ namespace jmodels
         case 44: return un_dilatant;
         case 45: return dil_hist;
         case 46: return ddil;
+        case 47: return reloadFlag;
         }
         return 0.0;
     }
@@ -250,6 +251,7 @@ namespace jmodels
         case 44: un_dilatant = prop.to<double>(); break;
         case 45: dil_hist = prop.to<double>(); break;
         case 46: ddil = prop.to<double>(); break;
+		case 47: reloadFlag = prop.to<double>(); break;
         }
     }
 
@@ -311,13 +313,13 @@ namespace jmodels
         un_dilatant = mm->un_dilatant;
         dil_hist = mm->dil_hist;
         ddil = mm->ddil;
+		reloadFlag = mm->reloadFlag;
     }
 
     void JModelYopi::initialize(uint32 dim, State* s)
     {
         JointModel::initialize(dim, s);
-        if (dilation_)tan_friction_ = tan((friction_ + dilation_) * dDegRad);
-        else tan_friction_ = tan(friction_ * dDegRad);
+        tan_friction_ = tan(friction_ * dDegRad);
         tan_res_friction_ = tan(res_friction_ * dDegRad);
         tan_dilation_ = tan(dilation_ * dDegRad);
         dilation_current = dilation_;
@@ -412,39 +414,58 @@ namespace jmodels
         double fpeak = compression_;
         double ftemp = 0.0;
         double dsn_ = kn_initial_ * dn_;
-        //double comp = 0.0;
 
         //Define the hardening part of the compressive strength here
+        // --- TENSION BRANCH --------------------------------------------------
+        // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)
         if (un_current < 0.0) {
-            if (un_current + dn_ <= un_hist_ten && dn_ < 0.0)
-            {
+            if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
+                // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
             }
-            kna = kn_ * s->area_;
-            //tension
-            s->normal_force_inc_ = kna * dn_;
-            s->normal_force_ += s->normal_force_inc_;
-            /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                throw std::runtime_error("NaN encountered in tension branch.");
-            }*/
+            if (dn_ < 0.0 && un_current < 0.0) {
+                // loading in tension: use current degraded tangent
+                const double kna_t = kn_ * s->area_;
+                s->normal_force_inc_ = kna_t * dn_;
+                s->normal_force_ += s->normal_force_inc_;
+            }
+            else {
+                // unloading in tension: secant to origin
+                const double u = s->normal_disp_;     // > 0 in tension
+                const double F = s->normal_force_;    // < 0 in tension
+                const double eps = 1e-14;
+                if (u > eps) {
+                    const double ksec = F / u;          // constant slope to (0,0)
+                    if (u + s->normal_disp_inc_ <= 0.0) {
+                        // clip: do not enter compression within this sub-step
+                        s->normal_force_inc_ = -F;      // bring force to zero
+                        s->normal_force_ = 0.0;
+                    }
+                    else {
+                        s->normal_force_inc_ = ksec * s->normal_disp_inc_;
+                        s->normal_force_ += s->normal_force_inc_;
+                    }
+                }
+                else {
+                    // already (almost) closed — drop to zero
+                    s->normal_force_inc_ = -F;
+                    s->normal_force_ = 0.0;
+                }
+            }
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            if ((sn_ + dsn_ >= peak_normal) && (s->state_ & comp_past) == 0.0) { // Loading   
+            if (dn_ >= 0.0 && (sn_+dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
-                //un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes    
                 if (un_current + dn_ <= uel_limit) {
                     //Elastic unloading
                     s->normal_force_inc_ = kna * dn_;
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
-                    /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                        throw std::runtime_error("NaN encountered here 1");
-                    }*/
                 }
                 else if (!s->state_ || sn_+dsn_ < compression_) {
                     double x_new = ((un_current + dn_) - uel_limit) / ucel_;
@@ -461,21 +482,22 @@ namespace jmodels
                     else s->normal_force_ = ftemp * s->area_;
                     fc_current = s->normal_force_ / s->area_;
                     plasFlag = 1;
-                    /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                        throw std::runtime_error("NaN encountered here 6");
-                    }*/
                 }
             }
             else {
-                //double un_plastic_rat = 0.235 * pow((un_hist_comp / ucel_), 2) + 0.25 * (un_hist_comp / ucel_);
-                double un_plastic_rat = 0.47 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
-                //double un_plastic_rat = 1.1905*(un_hist_comp / ucel_) + 0.0311;
+                double un_plastic_rat = 0.0;
+                if (dc == 0.0) {
+                    un_plastic_rat = 0.47 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
+                }
+                else {
+                    un_plastic_rat = 0.47*2.5 * pow((un_hist_comp / ucel_), 2) + 0.5*2.5 * (un_hist_comp / ucel_);
+                }
                 double un_plastic = un_plastic_rat * ucel_;
-                if (un_current + dn_ < un_hist_comp && dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
-                    //unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
-                    else pertFlag = 0;
-                    if (sn_ > 0.0 && (pertFlag == 0)) {
+                if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
+                    ////unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
+                    //if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
+                    //else pertFlag = 0;
+                    if (sn_ > 0.0) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -484,48 +506,33 @@ namespace jmodels
                         double B2 = B1 - B3;
                         double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
                         double fm = 0.0;
-                        fm = peak_normal + (0.0 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+                        fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
                         if (fm < 0.0) fm = 0.0;
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
                         fm_ro = fm;
                         un_ro = un_current + dn_; //Record the current displacement for unloading purposes       
-                        reloadFlag = 1;
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered here 5");
-                        }*/
+                        reloadFlag = 1.0;
                     }
                     else if (sn_ <= 0.0) {
                         fm_ro = 0.0;
-                        un_ro = 0.0;
-                        kna = kn_ * s->area_;
+                        kna = kn_comp_ * s->area_;
                         ////tension
-                        //s->normal_force_inc_ = kna * dn_;
-                        //s->normal_force_ += s->normal_force_inc_; //Debugged
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = 0;
-                        reloadFlag = 0;
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered here 2");
-                        }*/
                     }
                     else {
                         //Elastic unloading
-                        fm_ro = 0.0;
-                        un_ro = 0.0;
                         kna = kn_comp_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
-                        reloadFlag = 0;
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered here 1");
-                        }*/
                     }
                 }
                 else {
-                    if (reloadFlag == 1 && dn_ >= 0.0) {
+                    // --- reloading from compression ------------------------------------------------
+                    if (reloadFlag ==1 && dn_ >= 0.0) {
                         //recalculate un_hist_comp
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
@@ -536,7 +543,7 @@ namespace jmodels
                         //Calculate dynamically the beta coefficient according to Facconi                        
                         un_rec = (un_hist_comp - un_ro) / ucel_;
                         if (un_hist_comp < ucel_) {
-                            beta = 1 / (1 + 0.10 * (pow(un_rec, 0.5)));
+                            beta = 1 / (1 + 0.20 * (pow(un_rec, 0.5)));
                         }
                         else {
                             beta = 1 / (1 + 0.45 * (pow(un_rec, 0.2)));
@@ -552,58 +559,43 @@ namespace jmodels
                             k_re = (beta * peak_normal - fm_ro) / denom;
                             fm_re = fm_ro + k_re * (un_current - un_ro);
                         }
+                        
                         s->normal_force_inc_ = 0.0;
-                        //Only activate the envelope-based cap if dc>0
-                        /*s->normal_force_inc_ = 0;
-                        s->normal_force_ = fm_re * s->area_;*/
+
+                        // compute the current envelope (stress)
+                        double fc_env;
                         if (dc > 0.0) {
-                            double fc_env = compression_ * (1.0 - dc);  // already used elsewhere                            
-                            if (fm_re < fc_env) {
-                                s->normal_force_ = fm_re * s->area_;
-                                fc_current = fm_re;
-                            }
-                            else {
-                                reloadFlag = 0;
-                                jumptoDC = true;
-                            }
-                            //comp = fc_env * s->area_;
+                            // softening envelope already active
+                            fc_env = compression_ * (1.0 - dc);
                         }
                         else {
-                            // Compute envelope value at current displacement
-                            double x_new = (un_current - uel_limit) / ucel_;
-                            double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
-                            double fc_env = ftempNew;
-                            // Final decision: follow envelope if fm_re exceeds it
-                            s->normal_force_inc_ = 0;
-                            if (fm_re < fc_env) {
-                                s->normal_force_ = fm_re * s->area_;
-                                fc_current = fm_re;
-                            }
-                            else {
-                                reloadFlag = 0;
-                            }
+                            // hardening envelope from the closed-form you use elsewhere
+                            const double x_new = (un_current - uel_limit) / ucel_;
+                            const double ftempNew = fel_limit + (fpeak - fel_limit)
+                                * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
+                            fc_env = ftempNew;
                         }
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered in compressive branch reloading.");
-                        }*/
-                        fc_current = fm_re;
+
+                        // pick the controlling stress for this substep
+                        const double fc_target = std::min(fm_re, fc_env);
+
+                        // write force/stress consistently
+                        s->normal_force_ = fc_target * s->area_;
+                        fc_current = fc_target;
+
+                        // if we’ve reached the envelope, end reloading and
+                        // recompute dc later in the step
+                        if (fm_re >= fc_env) {
+                            reloadFlag = 0.0;
+                            jumptoDC = true;
+                        }
                     }
-                    else if (!s->state_){
-                        //Elastic unloading                    
+                    else {
+                        //Elastic unloading                 
                         kna = kn_comp_ * s->area_;
-                        //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
-                        reloadFlag = 0;
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered here 4");
-                        }*/
-                    }
-                    else {
-                        s->normal_force_inc_ = 0.0;
-                        reloadFlag = 0;
-                        jumptoDC = true;
                     }
                 }
             } //unloading  
@@ -634,10 +626,9 @@ namespace jmodels
         double ucul_ = m_ * ucel_;
 
         //Define the softening on compressive strength
-
-        if (s->state_ || jumptoDC) {
-            reloadFlag = 0;
-            plasFlag = 0;
+        if (s->state_  || jumptoDC) {            
+            // Keep plasFlag persistent; reset only if you never went plastic
+            if (un_hist_comp <= uel_limit) plasFlag = 0;
             if ((un_current >= ucel_) && (un_current < ucul_)) {
                 dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
             }
@@ -684,7 +675,7 @@ namespace jmodels
             else {
                 if (sign) {
                     if (iTension_d_) {
-                        tP_ = s->normal_disp_ / (tension_ / kn_initial_);
+                        tP_ = s->normal_disp_ / (tension_ / kn_);
                         dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
                     }
                     else if (G_I) {
@@ -696,11 +687,13 @@ namespace jmodels
             if (dt_hist < dt) dt_hist = dt;
             else dt = dt_hist;
             d_ts = dt + ds - dt * ds;
-            if (un_current < (-tension_ / kn_))
-            {
-                s->working_[Dqkn] = (1 - d_ts) * kn_;
-                if (sign) {
-                    kn_ = (1 - d_ts) * kn_;
+            // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
+            const double uel_t = tension_ / kn_initial_;
+            if (un_current < (-uel_t)) {
+                const double kn_secant = (1.0 - d_ts) * kn_initial_;
+                s->working_[Dqkn] = kn_secant;
+                if (sign) {                 // evolve only during opening (loading)
+                    kn_ = kn_secant;        // do NOT compound from the current kn_
                 }
             }
         }
@@ -758,27 +751,31 @@ namespace jmodels
                 if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
                 else friction_current_ = atan(tan_friction_) / dDegRad;*/
                 friction_current_ = (friction_ + dil_0);
-                tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
+
                 if (dilation_) {
-                    double usm = s->shear_disp_.mag();
-                    if (usm < s_zero_dilation_) {
-                        ddil = (1.0 - (usm / s_zero_dilation_)) * exp(-delta * (usm / s_zero_dilation_));             // Update history to current minimum
-
-                        double dilation_c = tan_dilation_ * ddil;
+                    if (!s->state_) {
+                        tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (dil_0)) * dDegRad);
+                    }
+                    else if (dc == 0.0) {
+                        double usm = s->shear_disp_.mag() - usel;
+                        double dilation_c = tan_dilation_ * (1 - (usm) / s_zero_dilation_) * exp(-delta * ((usm)));
                         if (dilation_c < 0.0) dilation_c = 0.0;
-
                         tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (atan(dilation_c) / dDegRad)) * dDegRad);
-                        dilation_current = atan(dilation_c) / dDegRad;
-                        friction_current_ = friction_ + dilation_current;
+                        dilation_current = (atan(dilation_c) / dDegRad);
+                        friction_current_ = (friction_ + (atan(dilation_c) / dDegRad));
                         double dusm = s->shear_disp_inc_.mag();
-                        un_dilatant += dilation_c * dusm;
-                        s->normal_force_ += kn_ * s->area_ * dilation_c * dusm;
+                        if (ddil > 0.0 || dc == 0.0) {
+                            un_dilatant += dilation_c * dusm;
+                            s->normal_force_ += kn_ * s->area_ * dilation_c * dusm;
+                        }
                     }
                     else {
-                        tc = cc * s->area_ + s->normal_force_ * tan(friction_ * dDegRad);
-                        dilation_current = 0.0;
-                        friction_current_ = friction_ / dDegRad;
+                        tc = cc * s->area_ + s->normal_force_ * tan((friction_)*dDegRad);
                     }
+                }
+                else {
+                    tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
+                    dilation_current = 0.0;
                 }
                 fsmax = tc;
                 f2 = fsm - tc;
@@ -786,7 +783,7 @@ namespace jmodels
             else {
                 f2 = fsm - fsmax;
                 cc = cohesion_;
-                friction_current_ = atan(tan_friction_ + dil_0) / dDegRad;
+                friction_current_ = friction_ + dil_0;
             }// if (state)
 
             //Check if slip
@@ -817,13 +814,9 @@ namespace jmodels
         } // if (!tenflg)
 
         // store peak
-        if (dc == 0.0) {
-            if (dn_ >= 0.0 && sn_ >= peak_normal && un_current >= 0.0)
-                peak_normal = sn_;
-        }
-        else {
-            if (dn_ >= 0.0 && sn_ < peak_normal && un_current >= 0.0)
-                peak_normal = sn_;
+        // store peak (compression envelope). Only grow it during compressive loading.
+        if (un_current >= 0.0 && dn_ >= 0.0) {
+            peak_normal = std::max(peak_normal, sn_);
         }
 
     }//run
