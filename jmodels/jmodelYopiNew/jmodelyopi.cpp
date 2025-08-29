@@ -102,7 +102,8 @@ namespace jmodels
         dilation_current(0),
         un_dilatant(0),
         dil_hist(0),
-        ddil(0)
+        ddil(0),
+        ksechist(0)
     {
     }
 
@@ -137,7 +138,7 @@ namespace jmodels
             "table-dt    ,table-ds ,"
             "tensile-disp-plastic    ,shear-disp-plastic ,"
             "G_c, Cn, Cnn, Css, fc_current,  fric_current,   peak_ratio, ult_ratio,uel,un_hist_comp,peak_normal,ds_hist,"
-            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist,delta,dilation_current,un_dilatant,dil_hist,ddil,reloadFlag");
+            "un_reloading,fm_reloading,un_hist_ten, dt_hist,dc_hist,delta,dilation_current,un_dilatant,dil_hist,ddil,reloadFlag,ksechist");
     }
 
     string JModelYopi::getStates() const
@@ -196,6 +197,7 @@ namespace jmodels
         case 45: return dil_hist;
         case 46: return ddil;
         case 47: return reloadFlag;
+		case 48: return ksechist;
         }
         return 0.0;
     }
@@ -252,6 +254,7 @@ namespace jmodels
         case 45: dil_hist = prop.to<double>(); break;
         case 46: ddil = prop.to<double>(); break;
 		case 47: reloadFlag = prop.to<double>(); break;
+		case 48: ksechist = prop.to<double>(); break;   
         }
     }
 
@@ -314,6 +317,7 @@ namespace jmodels
         dil_hist = mm->dil_hist;
         ddil = mm->ddil;
 		reloadFlag = mm->reloadFlag;
+		ksechist = mm->ksechist;
     }
 
     void JModelYopi::initialize(uint32 dim, State* s)
@@ -360,6 +364,11 @@ namespace jmodels
         if (!Cn) Cn = 0.0;
         if (!Cnn) Cnn = 1.0;
         if (!Css) Css = 9.0;
+        // Seed the stored tensile secant stiffness for reloads (positive magnitude)
+        if (s) {
+            const double kn0 = (kn_initial_ > 0.0 ? kn_initial_ : kn_);
+            s->working_[Dqkn] = kn0;
+        }
 
     }
 
@@ -395,7 +404,7 @@ namespace jmodels
         if (!s->state_) {
             s->working_[Dqs] = 0.0;
             s->working_[Dqt] = 0.0;
-            s->working_[Dqkn] = 0.0;
+            //s->working_[Dqkn] = 0.0;
             s->working_[Dqc] = 0.0;
             s->working_[5] = 0.0;
         }
@@ -417,42 +426,53 @@ namespace jmodels
 
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
-        // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)
+        // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
         if (un_current < 0.0) {
             if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
             }
-            if (dn_ < 0.0 && un_current < 0.0) {
-                // loading in tension: use current degraded tangent
-                const double kna_t = kn_ * s->area_;
-                s->normal_force_inc_ = kna_t * dn_;
-                s->normal_force_ += s->normal_force_inc_;
-            }
-            else {
-                // unloading in tension: secant to origin
-                const double u = s->normal_disp_;     // > 0 in tension
-                const double F = s->normal_force_;    // < 0 in tension
-                const double eps = 1e-14;
-                if (u > eps) {
-                    const double ksec = F / u;          // constant slope to (0,0)
-                    if (u + s->normal_disp_inc_ <= 0.0) {
-                        // clip: do not enter compression within this sub-step
-                        s->normal_force_inc_ = -F;      // bring force to zero
-                        s->normal_force_ = 0.0;
-                    }
-                    else {
-                        s->normal_force_inc_ = ksec * s->normal_disp_inc_;
-                        s->normal_force_ += s->normal_force_inc_;
-                    }
-                }
-                else {
-                    // already (almost) closed — drop to zero
-                    s->normal_force_inc_ = -F;
-                    s->normal_force_ = 0.0;
-                }
-            }
+            const double kna_t = kn_ * s->area_;
+            s->normal_force_inc_ = kna_t * dn_;
+            s->normal_force_ += s->normal_force_inc_;
+            //if (dn_ < 0.0 && un_current < 0.0) {
+            //    if ((reloadFlag == 1 || dt_hist > 0.0)) {
+            //        const double kn_damaged = (1 - d_ts) * tension_ / (-un_hist_ten);
+            //        const double kna_t = kn_damaged * s->area_;
+            //        s->normal_force_inc_ = kna_t * dn_;
+            //        s->normal_force_ += s->normal_force_inc_;
+            //    }
+            //    else {
+            //        const double kna_t = kn_ * s->area_;
+            //        s->normal_force_inc_ = kna_t * dn_;
+            //        s->normal_force_ += s->normal_force_inc_;
+            //    }                
+            //}
+            //else {
+            //    // unloading in tension: secant to origin
+            //    const double u = s->normal_disp_;     // > 0 in tension
+            //    const double F = s->normal_force_;    // < 0 in tension
+            //    const double eps = 1e-14;
+            //    if (u > eps) {
+            //        const double ksec_signed = F / u;      // negative in tension
+            //        s->working_[Dqkn] = -ksec_signed;      // store as positive magnitude
+            //        if (u + s->normal_disp_inc_ <= 0.0) {
+            //            // clip: do not enter compression within this sub-step
+            //            s->normal_force_inc_ = -F;      // bring force to zero
+            //            s->normal_force_ = 0.0;
+            //        }
+            //        else {
+            //            s->normal_force_inc_ = ksec_signed * s->normal_disp_inc_;
+            //            s->normal_force_ += s->normal_force_inc_;
+            //        }
+            //    }
+            //    else {
+            //        // already (almost) closed — drop to zero
+            //        s->normal_force_inc_ = -F;
+            //        s->normal_force_ = 0.0;
+            //    }
+            //}
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
@@ -690,10 +710,10 @@ namespace jmodels
             // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
             const double uel_t = tension_ / kn_initial_;
             if (un_current < (-uel_t)) {
-                const double kn_secant = (1.0 - d_ts) * kn_initial_;
-                s->working_[Dqkn] = kn_secant;
+                //const double kn_secant = (1.0 - d_ts) * kn_initial_;
+                s->working_[Dqkn] = (tension_* (1.0 - d_ts) /-un_hist_ten);   // <-- keep history up to date
                 if (sign) {                 // evolve only during opening (loading)
-                    kn_ = kn_secant;        // do NOT compound from the current kn_
+                    kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);        // do NOT compound from the current kn_
                 }
             }
         }

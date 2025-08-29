@@ -91,6 +91,7 @@ namespace jmodels
         double un_dilatant;
         double dil_hist;
         double ddil;
+        double ksechist;
     };
 } // namespace models
 
