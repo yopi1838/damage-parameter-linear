@@ -435,14 +435,13 @@ namespace jmodels
             }
             const double kna_t = kn_ * s->area_;
             s->normal_force_inc_ = kna_t * dn_;
-            s->normal_force_ += s->normal_force_inc_;
-            
+            s->normal_force_ += s->normal_force_inc_;			
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            if (dn_ >= 0.0 && (sn_+dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
+            if ((sn_+dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
                 if (un_current + dn_ <= uel_limit) {
@@ -479,9 +478,7 @@ namespace jmodels
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
                     ////unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    //if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
-                    //else pertFlag = 0;
-                    if (sn_ > 0.0) {
+                    if (sn_ > 0.0&& un_current > 0.0) {					
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -499,19 +496,12 @@ namespace jmodels
                         un_ro = un_current + dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
-                    else if (sn_ <= 0.0 && un_current > 0.0) {
-                        fm_ro = 0.0;
-                        kna = kn_comp_ * s->area_;
-                        ////tension
-                        s->normal_force_inc_ = 0;
-                        s->normal_force_ = 0;
-                    }
                     else {
                         //Elastic unloading
                         kna = kn_comp_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
-                        fc_current = s->normal_force_ / s->area_;
+                        fc_current = s->normal_force_ / s->area_;                        
                     }
                 }
                 else {
@@ -572,14 +562,15 @@ namespace jmodels
                         if (fm_re >= fc_env) {
                             reloadFlag = 0.0;
                             jumptoDC = true;
-                        }
+                        }                        
                     }
-                    else {
+                    else if (un_current > 0.0) {
                         //Elastic unloading                 
                         kna = kn_comp_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
+
                     }
                 }
             } //unloading  
