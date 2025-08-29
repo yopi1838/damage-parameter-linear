@@ -368,16 +368,12 @@ namespace jmodels
     }
 
     double JModelYopi::solveQuadratic(double a, double b, double c) {
-        double disc = b * b - 4 * a * c;
-        if (std::abs(a) < 1e-12) {
-            // SAFE: avoid division by zero
-            return (std::abs(b) > 1e-12) ? -c / b : 0.0;
-        }
-        if (disc < 0.0) disc = 0.0; // SAFE: clamp negative
-        double root_disc = std::sqrt(disc);
-        double x1 = (-b + root_disc) / (2 * a);
-        double x2 = (-b - root_disc) / (2 * a);
-        return (x1 > x2) ? x1 : x2;
+        double x1;
+        double x2;
+        x1 = (-b + sqrt(pow(b, 2) - 4 * a * c)) / (2 * a);
+        x2 = (-b - sqrt(pow(b, 2) - 4 * a * c)) / (2 * a);
+        if (x1 > x2) return x1;
+        else return x2;
     }
 
     void JModelYopi::run(uint32 dim, State* s)
@@ -409,15 +405,11 @@ namespace jmodels
         }
 
         double uel = 0.0;
-        double ucel_ = (std::abs(kn_comp_) > 1e-12)
-            ? n_ * compression_ / kn_comp_
-            : 0.0; // SAFE: avoid div by zero
+        double ucel_ = n_ * compression_ / kn_comp_;
 
         // normal force
         double fn0 = s->normal_force_;
-        double uel_limit = (std::abs(kn_comp_) > 1e-12)
-            ? compression_ / kn_comp_ / 5.0
-            : 0.0; // SAFE
+        double uel_limit = compression_ / kn_comp_ / 5.0;
         double sn_ = s->normal_force_ / s->area_; //negative in tension
         double dn_ = s->normal_disp_inc_ * (-1.0); //negative in tension
         double un_current = s->normal_disp_ * (-1.0);
@@ -465,10 +457,9 @@ namespace jmodels
                     plasFlag = 1;
 
                     //Check valid domain: 2x-x^2 must be >= 0.0 (the term inside the sqrt)
-                    // SAFE square root when computing compressive strength
                     auto safe_sqrt_expr = [](double x)->double {
                         double val = 2.0 * x - x * x;
-                        return (val >= 0.0) ? std::sqrt(val) : 0.0;
+                        return (val >= 0.0) ? sqrt(val) : 0.0;
                         };
                     ftemp = fel_limit + (fpeak - fel_limit) * safe_sqrt_expr(x_new);
                     s->normal_force_inc_ = 0;
@@ -499,8 +490,8 @@ namespace jmodels
                         double B2 = B1 - B3;
                         double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
                         double fm = 0.0;
-                        fm = peak_normal + (0.0 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
-                        if (fm < 0.0) fm = 0.0;
+                        fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+                        //if (fm < 0.0) fm = 0.0;
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
@@ -572,39 +563,33 @@ namespace jmodels
                         /*s->normal_force_inc_ = 0;
                         s->normal_force_ = fm_re * s->area_;*/
                         if (dc > 0.0) {
-                            double fc_env = compression_ * (1.0 - dc);  // already used elsewhere                            
-                            if (fm_re < fc_env) {
-                                s->normal_force_ = fm_re * s->area_;
-                                fc_current = fm_re;
-                            }
-                            else {
-                                reloadFlag = 0;
-                                jumptoDC = true;
-                            }
-                            //comp = fc_env * s->area_;
+                            // softening envelope already active
+                            fc_env = compression_ * (1.0 - dc);
                         }
                         else {
-                            // Compute envelope value at current displacement
-                            double x_new = (un_current - uel_limit) / ucel_;
-                            double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
-                            double fc_env = ftempNew;
-                            // Final decision: follow envelope if fm_re exceeds it
-                            s->normal_force_inc_ = 0;
-                            if (fm_re < fc_env) {
-                                s->normal_force_ = fm_re * s->area_;
-                                fc_current = fm_re;
-                            }
-                            else {
-                                reloadFlag = 0;
-                            }
+                            // hardening envelope from the closed-form you use elsewhere
+                            const double x_new = (un_current - uel_limit) / ucel_;
+                            const double ftempNew = fel_limit + (fpeak - fel_limit)
+                                * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
+                            fc_env = ftempNew;
                         }
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered in compressive branch reloading.");
-                        }*/
-                        fc_current = fm_re;
+
+                        // pick the controlling stress for this substep
+                        const double fc_target = std::min(fm_re, fc_env);
+
+                        // write force/stress consistently
+                        s->normal_force_ = fc_target * s->area_;
+                        fc_current = fc_target;
+
+                        // if we’ve reached the envelope, end reloading and
+                        // recompute dc later in the step
+                        if (fm_re >= fc_env) {
+                            reloadFlag = 0.0;
+                            jumptoDC = true;
+                        }                        
                     }
-                    else if (!s->state_){
-                        //Elastic unloading                    
+                    else {
+                        //Elastic unloading                 
                         kna = kn_comp_ * s->area_;
                         //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
                         s->normal_force_inc_ = kna * dn_;
@@ -711,11 +696,15 @@ namespace jmodels
             if (dt_hist < dt) dt_hist = dt;
             else dt = dt_hist;
             d_ts = dt + ds - dt * ds;
-            if (un_current < (-tension_ / kn_))
-            {
-                s->working_[Dqkn] = (1 - d_ts) * kn_;
-                if (sign) {
-                    kn_ = (1 - d_ts) * kn_;
+            // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
+            const double uel_t = tension_ / kn_initial_;
+            if (un_current < (-uel_t)) {
+                // Tension softening guard
+                if (std::abs(un_hist_ten) > 1e-12) {
+                    s->working_[Dqkn] = (tension_ * (1.0 - d_ts) / -un_hist_ten);
+                    if (sign) {
+                        kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
+                    }
                 }
             }
         }
@@ -856,7 +845,7 @@ namespace jmodels
     void JModelYopi::shearCorrection(State* s, uint32* IPlasticity, double& fsm, double& fsmax, double& usel) {
         if (IPlasticity) *IPlasticity = 2;
         double rat = 0.0;
-        if (fsm > 1e-12) rat = fsmax / fsm; // SAFE: avoid div by 0
+        if (fsm) rat = fsmax / fsm;
         s->shear_force_ *= rat;
         s->state_ |= slip_now;
         s->shear_force_inc_ = DVect3(0, 0, 0);
