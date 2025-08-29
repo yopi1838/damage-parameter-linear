@@ -427,7 +427,7 @@ namespace jmodels
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
-        if (un_current < 0.0) {
+        if (un_current <= 0.0) {
             if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
@@ -436,43 +436,7 @@ namespace jmodels
             const double kna_t = kn_ * s->area_;
             s->normal_force_inc_ = kna_t * dn_;
             s->normal_force_ += s->normal_force_inc_;
-            //if (dn_ < 0.0 && un_current < 0.0) {
-            //    if ((reloadFlag == 1 || dt_hist > 0.0)) {
-            //        const double kn_damaged = (1 - d_ts) * tension_ / (-un_hist_ten);
-            //        const double kna_t = kn_damaged * s->area_;
-            //        s->normal_force_inc_ = kna_t * dn_;
-            //        s->normal_force_ += s->normal_force_inc_;
-            //    }
-            //    else {
-            //        const double kna_t = kn_ * s->area_;
-            //        s->normal_force_inc_ = kna_t * dn_;
-            //        s->normal_force_ += s->normal_force_inc_;
-            //    }                
-            //}
-            //else {
-            //    // unloading in tension: secant to origin
-            //    const double u = s->normal_disp_;     // > 0 in tension
-            //    const double F = s->normal_force_;    // < 0 in tension
-            //    const double eps = 1e-14;
-            //    if (u > eps) {
-            //        const double ksec_signed = F / u;      // negative in tension
-            //        s->working_[Dqkn] = -ksec_signed;      // store as positive magnitude
-            //        if (u + s->normal_disp_inc_ <= 0.0) {
-            //            // clip: do not enter compression within this sub-step
-            //            s->normal_force_inc_ = -F;      // bring force to zero
-            //            s->normal_force_ = 0.0;
-            //        }
-            //        else {
-            //            s->normal_force_inc_ = ksec_signed * s->normal_disp_inc_;
-            //            s->normal_force_ += s->normal_force_inc_;
-            //        }
-            //    }
-            //    else {
-            //        // already (almost) closed — drop to zero
-            //        s->normal_force_inc_ = -F;
-            //        s->normal_force_ = 0.0;
-            //    }
-            //}
+            
         }
         else {
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
@@ -535,7 +499,7 @@ namespace jmodels
                         un_ro = un_current + dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
-                    else if (sn_ <= 0.0) {
+                    else if (sn_ <= 0.0 && un_current > 0.0) {
                         fm_ro = 0.0;
                         kna = kn_comp_ * s->area_;
                         ////tension
