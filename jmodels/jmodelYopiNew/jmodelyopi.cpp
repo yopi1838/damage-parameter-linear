@@ -466,7 +466,7 @@ namespace jmodels
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
                     ////unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    if (sn_ > 0.0&& un_current > 0.0) {					
+                    if (sn_ > 0.0 && un_current > 0.0) {					
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -659,31 +659,14 @@ namespace jmodels
         if (s->state_)
         {
             bool sign = std::signbit(dn_);
-            if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
-                //if table_dt is provided.
-                ////Exponential Softening                
-                if (sign) {
-                    if (iTension_d_) {
-                        tP_ = un_hist_ten * (-1.0) / (tension_ / kn_initial_);
-                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
-                    }
-                    else if (G_I) {
-                        dt = 1.0 - exp(-tension_ / G_I * (un_hist_ten * (-1.0) - (tension_ / kn_initial_))); //Exponential Softening
-                    }
-                    un_hist_ten += dn_;
+            if (sign) {
+                if (iTension_d_) {
+                    tP_ = s->normal_disp_ / (tension_ / kn_initial_);
+                    dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
                 }
-                d_ts = dt + ds - dt * ds;
-            }
-            else {
-                if (sign) {
-                    if (iTension_d_) {
-                        tP_ = s->normal_disp_ / (tension_ / kn_initial_);
-                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
-                    }
-                    else if (G_I) {
-                        tP_ = s->normal_disp_ - (tension_ / kn_initial_);
-                        dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
-                    }
+                else if (G_I) {
+                    tP_ = s->normal_disp_ - (tension_ / kn_initial_);
+                    dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
                 }
             }
             if (dt_hist < dt) dt_hist = dt;
@@ -751,10 +734,6 @@ namespace jmodels
 
                 //Store the current friction angle
                 double tc = 0.0;
-
-                /*double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
-                if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
-                else friction_current_ = atan(tan_friction_) / dDegRad;*/
                 friction_current_ = (friction_ + dil_0);
                 tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
                 if (dilation_) {
@@ -773,9 +752,11 @@ namespace jmodels
                         s->normal_force_ += kn_ * s->area_ * dilation_c * dusm;
                     }
                     else {
+                        double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
+                        if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
+                        else friction_current_ = atan(tan_friction_) / dDegRad;
                         tc = cc * s->area_ + s->normal_force_ * tan(friction_ * dDegRad);
-                        dilation_current = 0.0;
-                        friction_current_ = friction_ / dDegRad;
+                        dilation_current = 0.0;                        
                     }
                 }
                 fsmax = tc;
