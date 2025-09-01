@@ -391,7 +391,6 @@ namespace jmodels
     {
         JointModel::run(dim, s);
         bool jumptoDC = false;
-        bool jumptoDT = false;
         /* --- state indicator:                                  */
         /*     store 'now' info. as 'past' and turn 'now' info off ---*/
         if (s->state_ & slip_now) s->state_ |= slip_past;
@@ -438,7 +437,7 @@ namespace jmodels
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
-        if (un_current < 0.0 || jumptoDT) {
+        if (un_current+dn_ < 0.0) {
             if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
@@ -449,10 +448,11 @@ namespace jmodels
             s->normal_force_ += s->normal_force_inc_;			
         }
         else {
+			//COMPRESSION BRANCH --------------------------------------------------
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            if ((sn_+dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
+            if (un_current+dn_ >= un_hist_comp && ((s->state_ & comp_past) == 0)) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
                 if (un_current + dn_ <= uel_limit) {
@@ -480,12 +480,13 @@ namespace jmodels
                 }
             }
             else {
+                //Unloading in compression
                 double un_plastic_rat = 0.47 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
                 if (dc > 0.0) {
                     un_plastic_rat = 0.47*2.5 * pow((un_hist_comp / ucel_), 2) + 0.5*2.5 * (un_hist_comp / ucel_);
                 }
                 double un_plastic = un_plastic_rat * ucel_;
-                if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
+                if (dn_<0.0 && (plasFlag == 1)) { //unloading from compression
                     ////unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                     if (sn_ > 0.0) {					
                         double k1 = 1.5 * kn_comp_;
@@ -522,83 +523,85 @@ namespace jmodels
                 }
                 else {
                     // --- reloading from compression ------------------------------------------------
-                    if (reloadFlag ==1&&dn_ >= 0.0) {
-                        //recalculate un_hist_comp
-                        double denom = un_hist_comp;
-                        if (un_ro) denom = un_hist_comp - un_ro;
-                        double k_re = kn_initial_;
-                        double fm_re = 0.0;
-                        double beta = 1.0;
-                        double un_rec = 0.0; //normalized recovery displacement
-                        //Calculate dynamically the beta coefficient according to Facconi                        
-                        un_rec = (un_hist_comp - un_ro) / ucel_;
-                        if (un_hist_comp < ucel_) {
-                            beta = 1 / (1 + 0.20 * (pow(un_rec, 0.5)));
-                        }
-                        else {
-                            beta = 1 / (1 + 0.45 * (pow(un_rec, 0.2)));
-                        }
-                        
-                        //Second check: if denom is still too small, avoid division
-                        if (std::abs(denom) < 1e-12) {
-                            // Fallback option: set k_re to initial stiffness or a safe small number
-                            k_re = kn_comp_;  // or k_re = 1e6; or skip update entirely
-                            fm_re = fm_ro;
-                        }
-                        else {
-                            k_re = (beta * peak_normal - fm_ro) / denom;
-                            fm_re = fm_ro + k_re * (un_current - un_ro);
-                        }
+                    if (un_current < un_ro) {
                         s->normal_force_inc_ = 0.0;
-                        if (dc > 0.0) {
-                            double fc_env = compression_ * (1.0 - dc);  // already used elsewhere                            
-                            if (fm_re < fc_env) {
-                                s->normal_force_ = fm_re * s->area_;
-                                fc_current = fm_re;
-                            }
-                            else {
-                                reloadFlag = 0;
-                                jumptoDC = true;                                
-                            }
-                            //comp = fc_env * s->area_;
-                        }
-                        else{
-                            // Compute envelope value at current displacement
-                            double x_new = (un_current - uel_limit) / ucel_;
-                            double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
-                            double fc_env = ftempNew;
-                            // Final decision: follow envelope if fm_re exceeds it
-                            s->normal_force_inc_ = 0;
-                            if (fm_re < fc_env) {
-                                s->normal_force_ = fm_re * s->area_;
-                                fc_current = fm_re;
-                            }
-                            else {
-                                reloadFlag = 0;                                
-                            }
-                        }
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered in compressive branch reloading.");
-                        }*/
-                        fc_current = fm_re;                        
-                    }
-                    else if (!s->state_){
-                        //Elastic unloading                    
-                        kna = kn_comp_ * s->area_;
-                        //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
-                        s->normal_force_inc_ = kna * dn_;
-                        s->normal_force_ += s->normal_force_inc_;
-                        fc_current = s->normal_force_ / s->area_;
-                        reloadFlag = 0;
-                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
-                            throw std::runtime_error("NaN encountered here 4");
-                        }*/
+                        s->normal_force_ += 0.0;
+                        reloadFlag = 1;
                     }
                     else {
-                        s->normal_force_inc_ = 0.0;
-						s->normal_force_ += 0.0;
-                        reloadFlag = 0;
-                    }
+                        if (reloadFlag == 1 && dn_ >= 0.0) {
+                            //recalculate un_hist_comp
+                            double denom = un_hist_comp;
+                            if (un_ro) denom = un_hist_comp - un_ro;
+                            double k_re = kn_initial_;
+                            double fm_re = 0.0;
+                            double beta = 1.0;
+                            double un_rec = 0.0; //normalized recovery displacement
+                            //Calculate dynamically the beta coefficient according to Facconi                        
+                            un_rec = (un_hist_comp - un_ro) / ucel_;
+                            if (un_hist_comp < ucel_) {
+                                beta = 1 / (1 + 0.20 * (pow(un_rec, 0.5)));
+                            }
+                            else {
+                                beta = 1 / (1 + 0.45 * (pow(un_rec, 0.2)));
+                            }
+
+                            //Second check: if denom is still too small, avoid division
+                            if (std::abs(denom) < 1e-12) {
+                                // Fallback option: set k_re to initial stiffness or a safe small number
+                                k_re = kn_comp_;  // or k_re = 1e6; or skip update entirely
+                                fm_re = fm_ro;
+                            }
+                            else {
+                                k_re = (beta * peak_normal - fm_ro) / denom;
+                                fm_re = fm_ro + k_re * (un_current - un_ro);
+                            }
+                            s->normal_force_inc_ = 0.0;
+                            if (dc > 0.0) {
+                                double fc_env = compression_ * (1.0 - dc);  // already used elsewhere                            
+                                if (fm_re < fc_env) {
+                                    s->normal_force_ = fm_re * s->area_;
+                                    fc_current = fm_re;
+                                }
+                                else {
+                                    reloadFlag = 0;
+                                    jumptoDC = true;
+                                }
+                                //comp = fc_env * s->area_;
+                            }
+                            else {
+                                // Compute envelope value at current displacement
+                                double x_new = (un_current - uel_limit) / ucel_;
+                                double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
+                                double fc_env = ftempNew;
+                                // Final decision: follow envelope if fm_re exceeds it
+                                s->normal_force_inc_ = 0;
+                                if (fm_re < fc_env) {
+                                    s->normal_force_ = fm_re * s->area_;
+                                    fc_current = fm_re;
+                                }
+                                else {
+                                    reloadFlag = 0;
+                                }
+                            }
+                            /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                                throw std::runtime_error("NaN encountered in compressive branch reloading.");
+                            }*/
+                            fc_current = fm_re;
+                        }
+                        else {
+                            //Elastic unloading                    
+                            kna = kn_comp_ * s->area_;
+                            //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
+                            s->normal_force_inc_ = kna * dn_;
+                            s->normal_force_ += s->normal_force_inc_;
+                            fc_current = s->normal_force_ / s->area_;
+                            reloadFlag = 0;
+                            /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                                throw std::runtime_error("NaN encountered here 4");
+                            }*/
+                        }                        
+                    }                    
                 }
             } //unloading  
         }
