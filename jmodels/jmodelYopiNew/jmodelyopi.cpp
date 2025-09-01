@@ -437,7 +437,7 @@ namespace jmodels
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
-        if (un_current + dn_ < 0.0) {
+        if (un_current < 0.0) {
             if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
@@ -452,7 +452,7 @@ namespace jmodels
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            if (un_current + dn_ >= un_hist_comp && ((s->state_ & comp_past) == 0)) { // Loading   
+            if ((sn_ + dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
                 if (un_current + dn_ <= uel_limit) {
@@ -487,7 +487,6 @@ namespace jmodels
                 }
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
-                    ////unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
                     if (sn_ > 0.0) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
@@ -510,13 +509,13 @@ namespace jmodels
                         reloadFlag = 1;
                         kna = 0.0;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0.0;
+                        s->normal_force_ += 0;
                         fc_current = 0.0;
                     }
                     else {
                         //Elastic unloading
                         reloadFlag = 0;
-                        kna = kn_ * s->area_;
+                        kna = kn_comp_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                     }
@@ -525,7 +524,7 @@ namespace jmodels
                     // --- reloading from compression ------------------------------------------------
                     if (un_current < un_ro) {
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0.0;
+                        s->normal_force_ += 0;
                         reloadFlag = 1;
                     }
                     else {
