@@ -25,6 +25,7 @@ namespace jmodels
         virtual void           compCorrection(State* s, uint32* IPlasticity, double& comp);
         virtual void           shearCorrection(State* s, uint32* IPlasticity, double& fsm, double& fsmax, double& usel);
         virtual void           tensionCorrection(State* s, uint32* IPlasticity, double& ten);
+		virtual void           updateStateFlags(State* s);
         // Optional 
         virtual double         getStrengthStressRatio(const double&, const DVect3&) const { return 10.0; }
         virtual void           scaleProperties(const double&, const std::vector<uint32>&) {

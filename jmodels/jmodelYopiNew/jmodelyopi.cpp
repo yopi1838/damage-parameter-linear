@@ -323,53 +323,55 @@ namespace jmodels
     void JModelYopi::initialize(uint32 dim, State* s)
     {
         JointModel::initialize(dim, s);
+
         tan_friction_ = tan(friction_ * dDegRad);
         tan_res_friction_ = tan(res_friction_ * dDegRad);
         tan_dilation_ = tan(dilation_ * dDegRad);
         dilation_current = dilation_;
         last_shear_dir_ = DVect3(0.0, 0.0, 0.0);
 
-        //Initialize parameter for the compressive cap
+        // Initialize compressive cap
         R_yield = 0.0;
         R_violates = 0.0;
 
-        //Initialize the null pointer
+        // Reset table indices
         iTension_d_ = iShear_d_ = iHard_d_ = nullptr;
 
-        //Get Table index for each material parameters
         if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
         if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
 
+        //// --- SAFE INITIALIZATION OF HISTORY VARIABLES ---
+        //un_hist_comp = 1e-12;
+        //un_hist_ten = 1e-12;   // prevent divide by zero later
+        //fm_ro = 0.0;
+        //un_ro = 1e-12;
+        //peak_normal = 0.0;
+        //ds_hist = 0.0;
+        //dc_hist = 0.0;
+        //dt_hist = 0.0;
+        //dil_hist = 0.0;
+        //ddil = 0.0;
+        //reloadFlag = 0.0;
+        //plasFlag = 0;
+        //pertFlag = 0;
+        //ksechist = 0.0;
+        //delta = 0.0;
+        //uel_ = tension_ / kn_initial_;
+        //fc_current = 0.0;
+        //friction_current_ = friction_;
 
-        if (!G_c)
-            throw std::runtime_error("Internal error: Please input compressive fracture energy.");
-        if (!n_) n_ = 1.0;
-        if (n_ < 1.0)
-            throw std::runtime_error("Internal error: peak_ratio (n) must be bigger than 1.0");
-
-        if (G_I && iTension_d_)
-            throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
-
-        if (G_II && iShear_d_)
-            throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
-
-        if (dilation_ && !delta) delta = 2;
-        if (!dilation_) {
-            delta = 0.0;
-            un_dilatant = 0.0;
-        }
-
+        // Ensure compressive values are reasonable
         if (!compression_) compression_ = 1e20;
-        if (!res_comp_) res_comp_ = 0.0;
-        if (!Cn) Cn = 0.0;
-        if (!Cnn) Cnn = 1.0;
-        if (!Css) Css = 9.0;
-        // Seed the stored tensile secant stiffness for reloads (positive magnitude)
+        if (!res_comp_)    res_comp_ = 0.0;
+        if (!Cn)           Cn = 0.0;
+        if (!Cnn)          Cnn = 1.0;
+        if (!Css)          Css = 9.0;
+
+        // Seed stiffness in State working array
         if (s) {
             const double kn0 = (kn_initial_ > 0.0 ? kn_initial_ : kn_);
             s->working_[Dqkn] = kn0;
         }
-
     }
 
     double JModelYopi::solveQuadratic(double a, double b, double c) {
@@ -389,6 +391,7 @@ namespace jmodels
     {
         JointModel::run(dim, s);
         bool jumptoDC = false;
+        bool jumptoDT = false;
         /* --- state indicator:                                  */
         /*     store 'now' info. as 'past' and turn 'now' info off ---*/
         if (s->state_ & slip_now) s->state_ |= slip_past;
@@ -435,7 +438,7 @@ namespace jmodels
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
-        if (un_current <= 0.0) {
+        if (un_current < 0.0 || jumptoDT) {
             if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
@@ -477,17 +480,14 @@ namespace jmodels
                 }
             }
             else {
-                double un_plastic_rat = 0.0;
-                if (dc == 0.0) {
-                    un_plastic_rat = 0.47 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
-                }
-                else {
+                double un_plastic_rat = 0.47 * pow((un_hist_comp / ucel_), 2) + 0.5 * (un_hist_comp / ucel_);
+                if (dc > 0.0) {
                     un_plastic_rat = 0.47*2.5 * pow((un_hist_comp / ucel_), 2) + 0.5*2.5 * (un_hist_comp / ucel_);
                 }
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
                     ////unloading is limitted from the 98% line to differentiate unloading from numerical pertubation.         
-                    if (sn_ > 0.0&& un_current > 0.0) {					
+                    if (sn_ > 0.0) {					
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -505,17 +505,24 @@ namespace jmodels
                         un_ro = un_current + dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
+                    else if (un_current >= 0.0) {
+                        reloadFlag = 1;
+                        kna = 0.0;
+                        s->normal_force_inc_ = 0.0;
+                        s->normal_force_ += 0.0;
+                        fc_current = 0.0;
+                    }
                     else {
                         //Elastic unloading
-                        kna = kn_comp_ * s->area_;
+                        reloadFlag = 0;
+                        kna = kn_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
-                        fc_current = s->normal_force_ / s->area_;                        
                     }
                 }
                 else {
                     // --- reloading from compression ------------------------------------------------
-                    if (reloadFlag ==1 && dn_ >= 0.0) {
+                    if (reloadFlag ==1&&dn_ >= 0.0) {
                         //recalculate un_hist_comp
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
@@ -531,7 +538,7 @@ namespace jmodels
                         else {
                             beta = 1 / (1 + 0.45 * (pow(un_rec, 0.2)));
                         }
-
+                        
                         //Second check: if denom is still too small, avoid division
                         if (std::abs(denom) < 1e-12) {
                             // Fallback option: set k_re to initial stiffness or a safe small number
@@ -542,44 +549,55 @@ namespace jmodels
                             k_re = (beta * peak_normal - fm_ro) / denom;
                             fm_re = fm_ro + k_re * (un_current - un_ro);
                         }
-                        
                         s->normal_force_inc_ = 0.0;
-
-                        // compute the current envelope (stress)
-                        double fc_env;
                         if (dc > 0.0) {
-                            // softening envelope already active
-                            fc_env = compression_ * (1.0 - dc);
+                            double fc_env = compression_ * (1.0 - dc);  // already used elsewhere                            
+                            if (fm_re < fc_env) {
+                                s->normal_force_ = fm_re * s->area_;
+                                fc_current = fm_re;
+                            }
+                            else {
+                                reloadFlag = 0;
+                                jumptoDC = true;                                
+                            }
+                            //comp = fc_env * s->area_;
                         }
-                        else {
-                            // hardening envelope from the closed-form you use elsewhere
-                            const double x_new = (un_current - uel_limit) / ucel_;
-                            const double ftempNew = fel_limit + (fpeak - fel_limit)
-                                * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
-                            fc_env = ftempNew;
+                        else{
+                            // Compute envelope value at current displacement
+                            double x_new = (un_current - uel_limit) / ucel_;
+                            double ftempNew = fel_limit + (fpeak - fel_limit) * std::sqrt(std::max(0.0, 2.0 * x_new - x_new * x_new));
+                            double fc_env = ftempNew;
+                            // Final decision: follow envelope if fm_re exceeds it
+                            s->normal_force_inc_ = 0;
+                            if (fm_re < fc_env) {
+                                s->normal_force_ = fm_re * s->area_;
+                                fc_current = fm_re;
+                            }
+                            else {
+                                reloadFlag = 0;                                
+                            }
                         }
-
-                        // pick the controlling stress for this substep
-                        const double fc_target = std::min(fm_re, fc_env);
-
-                        // write force/stress consistently
-                        s->normal_force_ = fc_target * s->area_;
-                        fc_current = fc_target;
-
-                        // if we’ve reached the envelope, end reloading and
-                        // recompute dc later in the step
-                        if (fm_re >= fc_env) {
-                            reloadFlag = 0.0;
-                            jumptoDC = true;
-                        }                        
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered in compressive branch reloading.");
+                        }*/
+                        fc_current = fm_re;                        
                     }
-                    else {
-                        //Elastic unloading                 
+                    else if (!s->state_){
+                        //Elastic unloading                    
                         kna = kn_comp_ * s->area_;
+                        //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
-
+                        reloadFlag = 0;
+                        /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
+                            throw std::runtime_error("NaN encountered here 4");
+                        }*/
+                    }
+                    else {
+                        s->normal_force_inc_ = 0.0;
+						s->normal_force_ += 0.0;
+                        reloadFlag = 0;
                     }
                 }
             } //unloading  
@@ -676,9 +694,10 @@ namespace jmodels
             if (un_current < (-uel_t)) {
                 // Tension softening guard
                 if (std::abs(un_hist_ten) > 1e-12) {
-                    s->working_[Dqkn] = (tension_ * (1.0 - d_ts) / -un_hist_ten);
+
                     if (sign) {
                         kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
+
                     }
                 }
             }
@@ -811,6 +830,13 @@ namespace jmodels
         }
 
     }//run
+
+    void JModelYopi::updateStateFlags(State* s) {
+        if (s->state_ & slip_now)    s->state_ |= slip_past;
+        if (s->state_ & tension_now) s->state_ |= tension_past;
+        if (s->state_ & comp_now)    s->state_ |= comp_past;
+        s->state_ &= ~(slip_now | tension_now | comp_now);
+    }
 
     void JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten) {
         bool tenflag = false;
