@@ -344,18 +344,14 @@ namespace jmodels
         //un_hist_comp = 1e-12;
         //un_hist_ten = 1e-12;   // prevent divide by zero later
         //fm_ro = 0.0;
-        //un_ro = 1e-12;
+        //un_ro = 0.0;
         //peak_normal = 0.0;
         //ds_hist = 0.0;
         //dc_hist = 0.0;
         //dt_hist = 0.0;
-        //dil_hist = 0.0;
-        //ddil = 0.0;
         //reloadFlag = 0.0;
         //plasFlag = 0;
-        //pertFlag = 0;
-        //ksechist = 0.0;
-        //delta = 0.0;
+
         //uel_ = tension_ / kn_initial_;
         //fc_current = 0.0;
         //friction_current_ = friction_;
@@ -391,6 +387,7 @@ namespace jmodels
     {
         JointModel::run(dim, s);
         bool jumptoDC = false;
+        bool jumptoDT = false;
         /* --- state indicator:                                  */
         /*     store 'now' info. as 'past' and turn 'now' info off ---*/
         if (s->state_ & slip_now) s->state_ |= slip_past;
@@ -437,7 +434,7 @@ namespace jmodels
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
-        if (un_current < 0.0) {
+        if (un_current < 0.0 || jumptoDT) {
             if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
@@ -487,7 +484,7 @@ namespace jmodels
                 }
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
-                    if (sn_ > 0.0) {
+                    if (sn_+dsn_ > 0.0) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -497,34 +494,37 @@ namespace jmodels
                         double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
                         double fm = 0.0;
                         fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
-                        //if (fm < 0.0) fm = 0.0;
+                        if (fm <= 0.0 && s->normal_disp_ < 0.0) fm = 0.0;
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
                         fm_ro = fm;
                         un_ro = un_current + dn_; //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
+                        /*if (un_current < 0.0) jumptoDT = true;*/
                     }
-                    else if (un_current >= 0.0) {
+                    else if (sn_+dsn_<=0.0) {
+                        fm_ro = 0.0;
                         reloadFlag = 1;
-                        kna = 0.0;
-                        s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0;
+                        kna = kn_comp_ * s->area_;                                                
+                        s->normal_force_inc_ = kna * dn_;
+                        s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
-                    }
+					}
                     else {
                         //Elastic unloading
                         reloadFlag = 0;
                         kna = kn_comp_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
+                        fc_current = s->normal_force_ / s->area_;
                     }
                 }
                 else {
                     // --- reloading from compression ------------------------------------------------
                     if (un_current < un_ro) {
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0;
+                        s->normal_force_ = std::max(0.0, s->normal_force_);   // for double
                         reloadFlag = 1;
                     }
                     else {
@@ -698,7 +698,7 @@ namespace jmodels
                 if (std::abs(un_hist_ten) > 1e-12) {
 
                     if (sign) {
-                        kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
+                        kn_ = (tension_ * (1.0 - d_ts +1e-6 ) / -un_hist_ten);
 
                     }
                 }
