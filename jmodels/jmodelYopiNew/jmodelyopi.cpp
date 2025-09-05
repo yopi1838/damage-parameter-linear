@@ -509,17 +509,17 @@ namespace jmodels
                     un_plastic_rat = 0.47 * 2.5 * pow((un_hist_comp / ucel_), 2) + 0.5 * 2.5 * (un_hist_comp / ucel_);
                 }
                 double un_plastic = un_plastic_rat * ucel_;
-                if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
-                    if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
-                    else pertFlag = 0;
-                    if (sn_ > 0.0 && (pertFlag==0)){
+                if (dn_< 0.0 && (plasFlag == 1)) { //unloading from compression
+                    /*if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
+                    else pertFlag = 0;*/
+                    if (sn_ > 0.0){
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
                         double B1 = k1 / Es;
                         double B3 = 2 - (k2 / Es) * (1 + B1);
                         double B2 = B1 - B3;
-                        double Xeta = (un_current - un_hist_comp) / (un_plastic - un_hist_comp);
+                        double Xeta = ((un_current+dn_) - un_hist_comp) / (un_plastic - un_hist_comp);
                         double fm = 0.0;
                         fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
                         //if (fm <= 0.0 && s->normal_disp_ < 0.0) fm = 0.0;
@@ -610,7 +610,7 @@ namespace jmodels
                         }*/
                         fc_current = fm_re;
                     }
-                    else if (!s->state_) {
+                    else {
                         //Elastic unloading                    
                         kna = kn_comp_ * s->area_;
                         //if (std::isnan(kna)) throw std::runtime_error("NaN in kna 4!");
@@ -621,12 +621,6 @@ namespace jmodels
                         /*if (std::isnan(s->normal_force_) || std::isnan(s->normal_force_inc_)) {
                             throw std::runtime_error("NaN encountered here 4");
                         }*/
-                    }
-                    else {
-                        s->normal_force_inc_ = 0.0;
-                        s->normal_force_ = 0.0;
-                        reloadFlag = 0;
-                        jumptoDC = true;
                     }
                 }
             } //unloading  
@@ -854,8 +848,13 @@ namespace jmodels
 
         // store peak
         // store peak (compression envelope). Only grow it during compressive loading.
-        if (un_current >= 0.0 && dn_ >= 0.0) {
-            peak_normal = std::max(peak_normal, sn_);
+        if (dc == 0.0) {
+            if (dn_ >= 0.0 && sn_ >= peak_normal && un_current >= 0.0)
+                peak_normal = sn_;
+        }
+        else {
+            if (dn_ >= 0.0 && sn_ < peak_normal && un_current >= 0.0)
+                peak_normal = sn_;
         }
         // At end of run()
         if (std::isnan(s->normal_force_)) {
