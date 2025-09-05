@@ -471,35 +471,11 @@ namespace jmodels
                         return (val >= 0.0) ? std::sqrt(val) : 0.0;
                         };
                     ftemp = fel_limit + (fpeak - fel_limit) * safe_sqrt_expr(x_new);
-                    // Smooth, always-on nonlinear compression envelope without if-branches.
-                    // Guarantees tangent stiffness d ftemp / d u < kn_comp_ for all u  uel_limit.
-
-                    const double u = (un_current + dn_);         // current compressive disp. (0 in your sign convention here)
-                    const double ue = uel_limit;                   // elastic-limit displacement
-                    const double du = u - ue;                      // "beyond-elastic" part (can be negative)
-                    const double eps = 1e-12;                      // smoothness for sqrt, prevents NaN
-
-                    // Smooth positive-part (C^1) of du: ~max(du,0) but without conditionals
-                    const double du_pos = 0.5 * (du + std::sqrt(du * du + eps));
-
-                    // Exponential ramp from fel_limit to fpeak driven by du_pos
-                    // Pick alpha so the envelope slope at du=0+ is < kn_comp_:
-                    // d/du [fel + (fpeak-fel)*(1 - exp(-alpha*du))] at du=0 = (fpeak-fel)*alpha
-                    // => choose alpha = (1 - eta) * kn_comp_ / (fpeak - fel_limit),  with 0<eta<<1
-                    const double eta = 1e-3; // margin to stay strictly below elastic stiffness
-                    const double alpha = (fpeak > fel_limit)
-                        ? (1.0 - eta) * kn_comp_ / (fpeak - fel_limit)
-                        : 0.0;
-
-                    // Final envelope value (units: stress)
-                    ftemp = fel_limit + (fpeak - fel_limit) * (1.0 - std::exp(-alpha * du_pos));
-
-                    // Use the envelope directly (no branch needed)
-                    s->normal_force_inc_ = 0.0;
-                    s->normal_force_ = ftemp * s->area_;
-                    fc_current = ftemp;
+                    s->normal_force_inc_ = 0;
+                    if (ftemp / (un_current + dn_) >= kn_comp_) s->normal_force_ += kna * dn_;
+                    else s->normal_force_ = ftemp * s->area_;
+                    fc_current = s->normal_force_ / s->area_;
                     plasFlag = 1;
-
                 }
             }
             else {
@@ -510,9 +486,9 @@ namespace jmodels
                 }
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_< 0.0 && (plasFlag == 1)) { //unloading from compression
-                    /*if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
-                    else pertFlag = 0;*/
-                    if (sn_ > 0.0){
+                    if (un_current + dn_ >= un_hist_comp * 0.99) pertFlag = 2;
+                    else pertFlag = 0;
+                    if (sn_ > 0.0 && pertFlag ==0){
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
