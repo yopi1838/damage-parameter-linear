@@ -482,11 +482,35 @@ namespace jmodels
                         return (val >= 0.0) ? std::sqrt(val) : 0.0;
                         };
                     ftemp = fel_limit + (fpeak - fel_limit) * safe_sqrt_expr(x_new);
-                    s->normal_force_inc_ = 0;
-                    if (ftemp / (un_current + dn_) >= kn_comp_) s->normal_force_ += kna * dn_;
-                    else s->normal_force_ = ftemp * s->area_;
-                    fc_current = s->normal_force_ / s->area_;
+                    // Smooth, always-on nonlinear compression envelope without if-branches.
+                    // Guarantees tangent stiffness d ftemp / d u < kn_comp_ for all u  uel_limit.
+
+                    const double u = (un_current + dn_);         // current compressive disp. (0 in your sign convention here)
+                    const double ue = uel_limit;                   // elastic-limit displacement
+                    const double du = u - ue;                      // "beyond-elastic" part (can be negative)
+                    const double eps = 1e-12;                      // smoothness for sqrt, prevents NaN
+
+                    // Smooth positive-part (C^1) of du: ~max(du,0) but without conditionals
+                    const double du_pos = 0.5 * (du + std::sqrt(du * du + eps));
+
+                    // Exponential ramp from fel_limit to fpeak driven by du_pos
+                    // Pick alpha so the envelope slope at du=0+ is < kn_comp_:
+                    // d/du [fel + (fpeak-fel)*(1 - exp(-alpha*du))] at du=0 = (fpeak-fel)*alpha
+                    // => choose alpha = (1 - eta) * kn_comp_ / (fpeak - fel_limit),  with 0<eta<<1
+                    const double eta = 1e-3; // margin to stay strictly below elastic stiffness
+                    const double alpha = (fpeak > fel_limit)
+                        ? (1.0 - eta) * kn_comp_ / (fpeak - fel_limit)
+                        : 0.0;
+
+                    // Final envelope value (units: stress)
+                    ftemp = fel_limit + (fpeak - fel_limit) * (1.0 - std::exp(-alpha * du_pos));
+
+                    // Use the envelope directly (no branch needed)
+                    s->normal_force_inc_ = 0.0;
+                    s->normal_force_ = ftemp * s->area_;
+                    fc_current = ftemp;
                     plasFlag = 1;
+
                 }
             }
             else {
@@ -496,58 +520,29 @@ namespace jmodels
                     un_plastic_rat = 0.47 * 2.5 * pow((un_hist_comp / ucel_), 2) + 0.5 * 2.5 * (un_hist_comp / ucel_);
                 }
                 double un_plastic = un_plastic_rat * ucel_;
-                if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression
-                    if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
-                    else pertFlag = 0;
-                    if (sn_ > 0.0 && pertFlag == 0) {
-                        double denom_Es = (un_hist_comp - un_plastic);
-                        double Es = 1.5 * kn_comp_; // Default value
-                        // Only calculate Es if unloading from a significant stress
-                        if (std::abs(denom_Es) > 1e-12 && peak_normal > 1e-12) {
-                            Es = peak_normal / denom_Es;
-                        }
-                        // GUARD: If Es is near-zero, the complex unloading model is unstable.
-                        // Fall back to a simpler elastic response.
-                        if (std::abs(Es) < 1e-12) {
-                            reloadFlag = 0;
-                            kna = kn_comp_ * s->area_;
-                            s->normal_force_inc_ = kna * dn_;
-                            s->normal_force_ += s->normal_force_inc_;
-                            fc_current = s->normal_force_ / s->area_;
-                        }
-                        else {
-                            // Original complex unloading logic (now safe to execute)
-                            double k1 = 1.5 * kn_comp_;
-                            double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
-                            double B1 = k1 / Es;
-                            double B3 = 2 - (k2 / Es) * (1 + B1);
-                            double B2 = B1 - B3;
-                            double Xeta = ((un_current + dn_) - un_hist_comp) / (un_plastic - un_hist_comp);
-                            // ---> ADD THIS SNIPPET START <---
-                            // GUARD: Clamp Xeta to its valid range [0, 1] to prevent instability from large
-                            // displacement increments that overshoot the unloading path.
-                            Xeta = std::max(0.0, std::min(1.0, Xeta));
-                            // ---> ADD THIS SNIPPET END <---
-                            double fm = 0.0;
-
-                            // Check for unstable denominator in the fm calculation itself
-                            double fm_denom = 1 + B2 * Xeta + B3 * pow(Xeta, 2);
-                            if (std::abs(fm_denom) < 1e-12) {
-                                fm = 0.0; // Denominator is zero, force must be zero
-                            }
-                            else {
-                                fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / fm_denom);
-                            }
-
-                            s->normal_force_inc_ = 0;
-                            s->normal_force_ = fm * s->area_;
-                            fc_current = fm;
-                            fm_ro = fm;
-                            un_ro = un_current + dn_; //Record for reloading
-                            reloadFlag = 1.0;
-                        }
+                if (dn_< 0.0 && (plasFlag == 1)) { //unloading from compression
+                    /*if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
+                    else pertFlag = 0;*/
+                    if (sn_ > 0.0){
+                        double k1 = 1.5 * kn_comp_;
+                        double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
+                        double Es = peak_normal / (un_hist_comp - un_plastic);
+                        double B1 = k1 / Es;
+                        double B3 = 2 - (k2 / Es) * (1 + B1);
+                        double B2 = B1 - B3;
+                        double Xeta = ((un_current+dn_) - un_hist_comp) / (un_plastic - un_hist_comp);
+                        double fm = 0.0;
+                        fm = peak_normal + (0.05 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+                        //if (fm <= 0.0 && s->normal_disp_ < 0.0) fm = 0.0;
+                        s->normal_force_inc_ = 0;
+                        s->normal_force_ = fm * s->area_;
+                        fc_current = fm;
+                        fm_ro = fm;
+                        un_ro = un_current + dn_; //Record the current displacement for unloading purposes       
+                        reloadFlag = 1.0;
+                        /*if (un_current < 0.0) jumptoDT = true;*/
                     }
-                    else if (sn_ <= 0.0) {
+                    else if (sn_<=0.0) {
                         fm_ro = 0.0;
                         reloadFlag = 1;
                         double wc_ = (1 - dt) * (1 - dc) * kn_initial_;
