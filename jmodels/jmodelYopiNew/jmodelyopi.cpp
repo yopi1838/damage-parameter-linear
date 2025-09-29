@@ -892,55 +892,56 @@ namespace jmodels
 
     void JModelYopi::compCorrection(State* s, uint32* IPlasticity, double& comp) {
         if (IPlasticity) *IPlasticity = 3;
-        double gradient = s->shear_force_.mag();
-        double X_yield;
-        double Y_yield;
-        double x;
-        double ratc;
-        double y;
-        double a;
-        double b;
-        double c;
-        bool compFlag = false;
         s->state_ |= comp_now;
-        //Calculate the radial distance from point to the origin
-        x = (s->normal_force_); //normal force would be larger than the position of Cn
-        y = s->shear_force_.mag();
 
-        //Calculate the gradient intercept here
-        if (x > 0.0) gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
-        else gradient = s->shear_force_.mag();
+        // Current stress state (x = normal force, y = shear force magnitude)
+        double x = s->normal_force_;
+        double y = s->shear_force_.mag();
 
-        //Find the intercept from the gradient at the yield surface
-        a = Cnn + Css * pow(gradient, 2);
-        b = Cn;
-        c = -pow(comp, 2);
-        X_yield = solveQuadratic(a, b, c);
-        Y_yield = gradient * X_yield;
+        // The cap is only relevant for compressive normal forces
+        if (x <= 0.0) return;
 
-        // Corrected code
-        R_violates = sqrt(pow(x, 2) + pow(y, 2));
-        R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
+        // Gradient of the line from the origin to the current stress point
+        double gradient = 0.0;
+        if (x > 1e-12) { // Avoid division by zero
+            gradient = y / x;
+        }
+        else if (y > 0.0) {
+            // Pure shear or near-pure shear, gradient is effectively infinite.
+            // The quadratic solver can handle a very large gradient value.
+            gradient = 1.0e12;
+        }
 
-        if (R_violates > 1e-12) { // Use a small tolerance
-            if (!s->normal_force_) {
-                s->shear_force_ = DVect3(0, 0, 0);
-                compFlag = true;
-            }
-            if (dc >= 0.99) {
-                //Full brittle failure
-                s->normal_force_ = res_comp_ * s->area_;;
-            }
-            else {
-                s->normal_force_ = X_yield;
-                s->shear_force_ *= ratc;
-            }
+        // Find the intersection point (X_yield, Y_yield) on the yield surface
+        // by solving a*X^2 + b*X + c = 0
+        double a = Cnn + Css * pow(gradient, 2);
+        double b = Cn;
+        double c = -pow(comp, 2);
+
+        double X_yield = solveQuadratic(a, b, c);
+        double Y_yield = gradient * X_yield;
+
+        // Check for complete brittle failure due to accumulated damage
+        if (dc >= 0.99) {
+            s->normal_force_ = res_comp_ * s->area_; // Drop to residual compressive strength
+            s->shear_force_ = DVect3(0, 0, 0);     // Shear capacity is lost
         }
         else {
-            ratc = 1.0; // Or 1.0, depending on desired behavior at origin
+            // Apply correction to bring the stress point back onto the yield surface
             s->normal_force_ = X_yield;
-            s->shear_force_ *= ratc;
-        }        
+
+            double y_mag = s->shear_force_.mag();
+            if (y_mag > 1e-12) {
+                double ratc = Y_yield / y_mag; // Calculate the correct scaling factor
+                s->shear_force_ *= ratc;       // Apply it
+            }
+            else {
+                // If original shear was zero, it remains zero
+                s->shear_force_ = DVect3(0, 0, 0);
+            }
+        }
+
+        // Plastic correction is done, so force increments for this step are zero
         s->normal_force_inc_ = 0.0;
         s->shear_force_inc_ = DVect3(0, 0, 0);
     }
