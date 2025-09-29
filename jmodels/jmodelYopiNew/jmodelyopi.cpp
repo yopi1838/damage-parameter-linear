@@ -343,21 +343,21 @@ namespace jmodels
         if (dtTable_.length()) iTension_d_ = s->getTableIndexFromID(dtTable_);
         if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
 
-        //// --- SAFE INITIALIZATION OF HISTORY VARIABLES ---
-        //un_hist_comp = 1e-12;
-        //un_hist_ten = 1e-12;   // prevent divide by zero later
-        //fm_ro = 0.0;
-        //un_ro = 0.0;
-        //peak_normal = 0.0;
-        //ds_hist = 0.0;
-        //dc_hist = 0.0;
-        //dt_hist = 0.0;
-        //reloadFlag = 0.0;
-        //plasFlag = 0;
+        // --- SAFE INITIALIZATION OF HISTORY VARIABLES ---
+        un_hist_comp = 1e-12;
+        un_hist_ten = 1e-12;   // prevent divide by zero later
+        fm_ro = 0.0;
+        un_ro = 0.0;
+        peak_normal = 0.0;
+        ds_hist = 0.0;
+        dc_hist = 0.0;
+        dt_hist = 0.0;
+        reloadFlag = 0.0;
+        plasFlag = 0;
 
-        //uel_ = tension_ / kn_initial_;
-        //fc_current = 0.0;
-        //friction_current_ = friction_;
+        uel_ = tension_ / kn_initial_;
+        fc_current = 0.0;
+        friction_current_ = friction_;
 
         // Ensure compressive values are reasonable
         if (!compression_) compression_ = 1e20;
@@ -431,7 +431,7 @@ namespace jmodels
         double fel_limit = compression_ / 5.0;
         double fpeak = compression_;
         double ftemp = 0.0;
-        double dsn_ = kn_initial_ * dn_;
+        double dsn_ = kn_initial_ * dn_;		
 
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
@@ -441,8 +441,11 @@ namespace jmodels
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
-            }
-            const double kna_t = kn_ * s->area_;
+            }            
+            double kna_t = kn_ * s->area_;
+            if (d_ts > 0.0 && dn_ >=0.0) kna_t = ksechist * s->area_;
+            else if (d_ts>0.0 && dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) kna_t = ksechist * s->area_;
+			else kna_t = kn_ * s->area_;
             s->normal_force_inc_ = kna_t * dn_;
             s->normal_force_ += s->normal_force_inc_;
         }
@@ -489,9 +492,17 @@ namespace jmodels
                     if (un_current + dn_ >= un_hist_comp * 0.99) pertFlag = 2;
                     else pertFlag = 0;
                     if (sn_ > 0.0 && pertFlag ==0){
+						double denom_Es = (un_hist_comp - un_plastic);
+                        double Es = 1.5*kn_comp_;
+                        if (std::abs(denom_Es) < 1e-12) { // Use a small tolerance
+                            // Handle the case, e.g., by using initial stiffness
+                            Es = 1.5 * kn_comp_;
+                        }
+                        else {
+                            Es = peak_normal / denom_Es;
+                        }
                         double k1 = 1.5 * kn_comp_;
-                        double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
-                        double Es = peak_normal / (un_hist_comp - un_plastic);
+                        double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);                        
                         double B1 = k1 / Es;
                         double B3 = 2 - (k2 / Es) * (1 + B1);
                         double B2 = B1 - B3;
@@ -621,9 +632,16 @@ namespace jmodels
         double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
         double kappa_ = ucel_ * compression_;
         double gamma_ = 2.0;
-        m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
-            + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
-        if (m_ < 1.5) m_ = 1.5;
+        // Corrected code
+        double m_denom = 0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_);
+        if (std::abs(m_denom) < 1e-12) {
+            m_ = 1.5; // Default fallback value
+        }
+        else {
+            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+                + 0.75 * kappa_ + 0.25 * beta_) / m_denom;
+        }
+        if (m_ < 1.5) m_ = 1.5; // Existing check
         double ucul_ = m_ * ucel_;
 
         //Define the softening on compressive strength
@@ -698,7 +716,8 @@ namespace jmodels
                 // Tension softening guard
                 if (std::abs(un_hist_ten) > 1e-12) {
                     if (sign) {
-                        kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                        ksechist = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                        kn_ = (1-d_ts)*kn_initial_;
                     }
                 }
             }
@@ -746,19 +765,17 @@ namespace jmodels
                 ds = clamp01(ds);
                 if (ds >= ds_hist) ds_hist = ds;
                 else ds = ds_hist;
-                ds = clamp01(ds);
                 ds_hist = clamp01(ds_hist);
                 d_ts = clamp01(dt + ds - dt * ds);
                 double resamueff = tan_res_friction_;
                 if (!resamueff) resamueff = tan_friction_;
-                cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
+                double resaceff = res_cohesion_;
+				if (!resaceff) resaceff = 0.0;
+                cc = resaceff + (cohesion_ - resaceff) * (1 - d_ts);
 
                 //Store the current friction angle
                 double tc = 0.0;
-
-                /*double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
-                if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
-                else friction_current_ = atan(tan_friction_) / dDegRad;*/
+                
                 friction_current_ = (friction_ + dil_0);
 
                 if (dilation_) {
@@ -783,7 +800,10 @@ namespace jmodels
                     }
                 }
                 else {
-                    tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
+                    double tan_friction_c = resamueff + (tan_friction_ - resamueff) * (1 - ((cohesion_ - cc) / (cohesion_ - resaceff)));
+                    if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
+                    else friction_current_ = atan(tan_friction_) / dDegRad;
+                    tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
                     dilation_current = 0.0;
                 }
                 fsmax = tc;
@@ -898,23 +918,29 @@ namespace jmodels
         X_yield = solveQuadratic(a, b, c);
         Y_yield = gradient * X_yield;
 
+        // Corrected code
         R_violates = sqrt(pow(x, 2) + pow(y, 2));
         R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
 
-        //Correct the normal and shear forces to the yield surface
-        ratc = R_yield / R_violates;
-        if (!s->normal_force_) {
-            s->shear_force_ = DVect3(0, 0, 0);
-            compFlag = true;
-        }
-        if (dc >= 0.99) {
-            //Full brittle failure
-            s->normal_force_ = res_comp_ * s->area_;;
+        if (R_violates > 1e-12) { // Use a small tolerance
+            if (!s->normal_force_) {
+                s->shear_force_ = DVect3(0, 0, 0);
+                compFlag = true;
+            }
+            if (dc >= 0.99) {
+                //Full brittle failure
+                s->normal_force_ = res_comp_ * s->area_;;
+            }
+            else {
+                s->normal_force_ = X_yield;
+                s->shear_force_ *= ratc;
+            }
         }
         else {
+            ratc = 1.0; // Or 1.0, depending on desired behavior at origin
             s->normal_force_ = X_yield;
             s->shear_force_ *= ratc;
-        }
+        }        
         s->normal_force_inc_ = 0.0;
         s->shear_force_inc_ = DVect3(0, 0, 0);
     }
