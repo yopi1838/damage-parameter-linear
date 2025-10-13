@@ -344,6 +344,23 @@ namespace jmodels
         if (dsTable_.length()) iShear_d_ = s->getTableIndexFromID(dsTable_);
 
         //// --- SAFE INITIALIZATION OF HISTORY VARIABLES ---
+        if (!G_c)
+            throw std::runtime_error("Internal error: Please input compressive fracture energy.");
+        if (!n_) n_ = 1.0;
+        if (n_ < 1.0)
+            throw std::runtime_error("Internal error: peak_ratio (n) must be bigger than 1.0");
+
+        if (G_I && iTension_d_)
+            throw std::runtime_error("Internal error: either G_I or dtTable_ can be defined, not both.");
+
+        if (G_II && iShear_d_)
+            throw std::runtime_error("Internal error: either G_II or dsTable_ can be defined, not both.");
+
+        if (dilation_ && !delta) delta = 2;
+        if (!dilation_) {
+            delta = 0.0;
+            un_dilatant = 0.0;
+        }
 
         // Ensure compressive values are reasonable
         if (!compression_) compression_ = 1e20;
@@ -399,9 +416,7 @@ namespace jmodels
 
         // normal force
         double fn0 = s->normal_force_;
-        double uel_limit = (std::abs(kn_comp_) > 1e-12)
-            ? compression_ / kn_comp_ / 5.0
-            : 0.0; // SAFE
+        double uel_limit = compression_ / kn_comp_ / 5.0;
         double sn_ = s->normal_force_ / s->area_; //negative in tension
         double dn_ = s->normal_disp_inc_ * (-1.0); //negative in tension
         double un_current = s->normal_disp_ * (-1.0);
@@ -415,13 +430,14 @@ namespace jmodels
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
         if (un_current < 0.0) {
-            if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
-                // keep your history update
+            if (un_current + dn_ <= un_hist_ten)
+            {
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
             }
-            const double kna_t = kn_ * s->area_;
-            s->normal_force_inc_ = kna_t * dn_;
+            kna = kn_ * s->area_;
+            //tension
+            s->normal_force_inc_ = kna * dn_;
             s->normal_force_ += s->normal_force_inc_;
         }
         else {
@@ -467,9 +483,9 @@ namespace jmodels
                 double un_plastic_rat = 0.47 *mult * pow((un_hist_comp / ucel_), 2) + 0.5 * mult * (un_hist_comp / ucel_);
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression                    
-                    if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
-                    else pertFlag = 0;
-                    if (sn_+ dsn_ > 0.0 && (pertFlag==0)) {
+                    /*if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
+                    else pertFlag = 0;*/
+                    if (sn_+ dsn_ > 0.0) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -478,22 +494,22 @@ namespace jmodels
                         double B2 = B1 - B3;
                         double Xeta = ((un_current) - un_hist_comp) / (un_plastic - un_hist_comp);
 						//Xeta = clamp01(Xeta);
-                        double fm = 0.0;
+                        double fm = 1e-16;
                         fm = peak_normal + (1e-16 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
-                        //if (fm < 0.0) fm = 0.0;
+                        if (fm < 1e-16) fm = 1e-16;
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
                         fm_ro = fm;
-                        un_ro = un_current;
+                        un_ro = un_current+dn_;
                          //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
-                    else if (sn_+ dsn_ <= 0.0 && un_current+dn_ > 1e-16) {
+                    else if (sn_+dsn_ <= 1e-16) {
                         fm_ro = 0.0;
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0.0;
+                        s->normal_force_ = 1e-16;
                         fc_current = 0.0;
                     }
                     else {
@@ -509,7 +525,7 @@ namespace jmodels
                     if (un_current + dn_ < un_ro && dn_ >= 0.0) {
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0.0;
+                        s->normal_force_ = 1e-16;
                         fc_current = 0.0;
                     }
                     else if (reloadFlag == 1 && dn_ >= 0.0) {
@@ -643,24 +659,49 @@ namespace jmodels
         if (s->state_)
         {
             bool sign = std::signbit(dn_);
-            if (sign) {
-                if (iTension_d_) {
-                    tP_ = s->normal_disp_ / (tension_ / kn_);
-                    dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+            if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
+                //if table_dt is provided.
+                ////Exponential Softening                
+                if (sign) {
+                    if (iTension_d_) {
+                        tP_ = un_hist_ten * (-1.0) / (tension_ / kn_initial_);
+                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                    }
+                    else if (G_I) {
+                        dt = 1.0 - exp(-tension_ / G_I * (un_hist_ten * (-1.0) - (tension_ / kn_initial_))); //Exponential Softening
+                    }
+                    un_hist_ten += dn_;
                 }
-                else if (G_I) {
-                    tP_ = s->normal_disp_ - (tension_ / kn_initial_);
-                    dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
+                if (dt_hist < dt) dt_hist = dt;
+                else dt = dt_hist;
+                d_ts = dt + ds - dt * ds;
+                // Tension softening guard
+                if (std::abs(un_hist_ten) > 1e-12) {
+                    if (sign) {
+                        kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                    }
                 }
             }
-            if (dt_hist < dt) dt_hist = dt;
-            else dt = dt_hist;
-            d_ts = dt + ds - dt * ds;
-            // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
-            // Tension softening guard
-            if (std::abs(un_hist_ten) > 1e-12) {
+            else {
                 if (sign) {
-                    kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                    if (iTension_d_) {
+                        tP_ = s->normal_disp_ / (tension_ / kn_);
+                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                    }
+                    else if (G_I) {
+                        tP_ = s->normal_disp_ - (tension_ / kn_initial_);
+                        dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
+                    }
+                }
+                if (dt_hist < dt) dt_hist = dt;
+                else dt = dt_hist;
+                d_ts = dt + ds - dt * ds;
+                // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
+                // Tension softening guard
+                if (std::abs(un_hist_ten) > 1e-12) {
+                    if (sign) {
+                        kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                    }
                 }
             }
         }
