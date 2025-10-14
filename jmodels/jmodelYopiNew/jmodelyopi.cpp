@@ -485,7 +485,7 @@ namespace jmodels
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression                    
                     /*if (un_current + dn_ >= un_hist_comp * 0.985) pertFlag = 2;
                     else pertFlag = 0;*/
-                    if (sn_+ dsn_ > 0.0) {
+                    if (sn_+ dsn_ > 1e-16) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -493,10 +493,10 @@ namespace jmodels
                         double B3 = 2 - (k2 / Es) * (1 + B1);
                         double B2 = B1 - B3;
                         double Xeta = ((un_current) - un_hist_comp) / (un_plastic - un_hist_comp);
-						//Xeta = clamp01(Xeta);
+						/*Xeta = clamp01(Xeta);*/
                         double fm = 1e-16;
                         fm = peak_normal + (1e-16 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
-                        if (fm < 1e-16) fm = 1e-16;
+                        //if (fm < 1e-16) fm = 1e-16;
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
@@ -504,13 +504,6 @@ namespace jmodels
                         un_ro = un_current+dn_;
                          //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
-                    }
-                    else if (sn_+dsn_ <= 1e-16) {
-                        fm_ro = 0.0;
-                        reloadFlag = 1;
-                        s->normal_force_inc_ = 0.0;
-                        s->normal_force_ = 1e-16;
-                        fc_current = 0.0;
                     }
                     else {
                         //Elastic unloading
@@ -525,7 +518,6 @@ namespace jmodels
                     if (un_current + dn_ < un_ro && dn_ >= 0.0) {
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ = 1e-16;
                         fc_current = 0.0;
                     }
                     else if (reloadFlag == 1 && dn_ >= 0.0) {
@@ -753,13 +745,8 @@ namespace jmodels
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
 
                 //Store the current friction angle
-                double tc = 0.0;
-
-                double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
-                if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
-                else friction_current_ = atan(tan_friction_) / dDegRad;
-                friction_current_ = (friction_ + dil_0);
-                tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+                double tc = 0.0;                
+                friction_current_ = (friction_ + dil_0);                
 
                 if (dilation_) {
                     if (!s->state_) {
@@ -781,6 +768,10 @@ namespace jmodels
                     else {
                         tc = cc * s->area_ + s->normal_force_ * tan((friction_)*dDegRad);
                     }
+                }
+                else {
+                    tc = cc * s->area_ + s->normal_force_ * tan((friction_ + dil_0) * dDegRad);
+                    dilation_current = 0.0;
                 }
                 fsmax = tc;
                 f2 = fsm - tc;
