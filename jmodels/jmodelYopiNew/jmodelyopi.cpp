@@ -444,7 +444,7 @@ namespace jmodels
             if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            if ((sn_+ dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
+            if ((sn_+dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
                 if (un_current + dn_ <= uel_limit) {
@@ -484,7 +484,7 @@ namespace jmodels
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression                    
                     if (un_current + dn_ >= un_hist_comp * 0.99) pertFlag = 2;
                     else pertFlag = 0;
-                    if (sn_+dsn_ > 1e-16 && (pertFlag == 0)) {
+                    if (sn_ > 1e-16 && (pertFlag == 0)) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
                         double Es = peak_normal / (un_hist_comp - un_plastic);
@@ -495,7 +495,7 @@ namespace jmodels
 						//Xeta = clamp01(Xeta);
                         double fm = 1e-16;
                         fm = peak_normal + (1e-16 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
-                        if (fm < 1e-16) fm = 1e-16;
+                        //if (fm < 1e-16) fm = 1e-16;
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
@@ -504,11 +504,11 @@ namespace jmodels
                          //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
-                    else if (sn_+dsn_ <= 1e-16) {
+                    else if (sn_ <= 1e-16) {
                         fm_ro = 0.0;
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ = 1e-16;
+                        s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
                     else {
@@ -524,7 +524,7 @@ namespace jmodels
                     if (un_current + dn_ < un_ro && dn_ >= 0.0) {
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ = 1e-16;
+                        s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
                     else if (reloadFlag == 1 && dn_ >= 0.0) {
@@ -537,7 +537,7 @@ namespace jmodels
                         double un_rec = 0.0; //normalized recovery displacement
                         //Calculate dynamically the beta coefficient according to Facconi                        
                         un_rec = (un_hist_comp - un_ro) / ucel_;
-                        if (dc==0.0) {
+                        if (un_hist_comp < ucel_) {
                             beta = 1 / (1 + 0.20 * (pow(un_rec, 0.5)));
                         }
                         else {
@@ -658,6 +658,7 @@ namespace jmodels
         if (s->state_)
         {
             bool sign = std::signbit(dn_);
+          
             if (sign) {
                 if (iTension_d_) {
                     tP_ = s->normal_disp_ / (tension_ / kn_);
@@ -667,7 +668,7 @@ namespace jmodels
                     tP_ = s->normal_disp_ - (tension_ / kn_initial_);
                     dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
                 }
-            }
+            }            
             if (dt_hist < dt) dt_hist = dt;
             else dt = dt_hist;
             d_ts = dt + ds - dt * ds;
@@ -676,9 +677,13 @@ namespace jmodels
             d_ts = clamp01(dt + ds - dt * ds);
             // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
             // Tension softening guard
-            if (std::abs(un_hist_ten) > 1e-12) {
-                if (sign) {
-                    kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+            const double uel_t = tension_ / kn_initial_;
+            if (un_current < (-uel_t)) {
+                // Tension softening guard
+                if (std::abs(un_hist_ten) > 1e-12) {
+                    if (sign) {
+                        kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                    }
                 }
             }
         }
