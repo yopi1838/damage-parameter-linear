@@ -504,13 +504,6 @@ namespace jmodels
                          //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
-                    else if (sn_ <= 1e-16) {
-                        fm_ro = 0.0;
-                        reloadFlag = 1;
-                        s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += s->normal_force_inc_;
-                        fc_current = 0.0;
-                    }
                     else {
                         //Elastic unloading
                         reloadFlag = 0;
@@ -524,7 +517,7 @@ namespace jmodels
                     if (un_current + dn_ < un_ro && dn_ >= 0.0) {
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += s->normal_force_inc_;
+                        //s->normal_force_ = s->normal_force_inc_;
                         fc_current = 0.0;
                     }
                     else if (reloadFlag == 1 && dn_ >= 0.0) {
