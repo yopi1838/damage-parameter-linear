@@ -37,6 +37,8 @@ extern "C" __declspec(dllexport) void* createInstance()
 
 namespace jmodels
 {
+    
+    static constexpr double kSmallForce = 1e-12; // small positive force to avoid exact-zero branches / div-by-zero
     static const double dPi = 3.141592653589793238462643383279502884197169399;
     static const double dDegRad = dPi / 180.0;
     static inline double clamp01(double v) {
@@ -426,11 +428,18 @@ namespace jmodels
         double ftemp = 0.0;
         double dsn_ = kn_initial_ * dn_;
 
+        // un_current >= 0 is compression (in contact)
+        bool inContact = (un_current >= 0.0);
+
+        // dn_ < 0 is opening (tensile increment)
+        // dn_ >= 0 is closing (compressive increment)
+        bool isClosing = (dn_ >= 0.0);
+
         //Define the hardening part of the compressive strength here
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
-        if (un_current < 0.0) {
-            if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
+        if (!inContact) {
+            if (!isClosing && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
@@ -441,7 +450,7 @@ namespace jmodels
         }
         else {
             //COMPRESSION BRANCH --------------------------------------------------
-            if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
+            if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && isClosing) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
             if ((sn_+dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
@@ -481,20 +490,20 @@ namespace jmodels
                 if (dc > 0.0) mult = 2.5;
                 double un_plastic_rat = 0.47 *mult * pow((un_hist_comp / ucel_), 2) + 0.5 * mult * (un_hist_comp / ucel_);
                 double un_plastic = un_plastic_rat * ucel_;
-                if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression                    
+                if (!isClosing && (plasFlag == 1)) { //unloading from compression                    
                     if (un_current + dn_ >= un_hist_comp * 0.99) pertFlag = 2;
                     else pertFlag = 0;
-                    if (sn_ > 1e-16 && (pertFlag == 0)) {
+                    if (sn_ > 0.0 && (pertFlag == 0)) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
-                        double Es = peak_normal / (un_hist_comp - un_plastic);
+						double denom_Es = un_hist_comp - un_plastic;
+                        double Es = peak_normal / denom_Es;						
                         double B1 = k1 / Es;
                         double B3 = 2 - (k2 / Es) * (1 + B1);
                         double B2 = B1 - B3;
                         double Xeta = ((un_current) - un_hist_comp) / (un_plastic - un_hist_comp);
-						//Xeta = clamp01(Xeta);
-                        double fm = 1e-16;
-                        fm = peak_normal + (1e-16 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+                        double fm = kSmallForce;
+                        fm = peak_normal + (kSmallForce - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
@@ -503,7 +512,7 @@ namespace jmodels
                          //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
-                    else if (sn_ <= 1e-16) {
+                    else if (sn_ <= 0.0) {
                         fm_ro = 0.0;
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
@@ -520,27 +529,29 @@ namespace jmodels
                     }
                 }
                 else {
-                    if (un_current + dn_ < un_ro && dn_ >= 0.0) {
+                    if (un_current + dn_ < un_ro && isClosing) {
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
-                    else if (reloadFlag == 1 && dn_ >= 0.0) {
+                    else if (reloadFlag == 1 && isClosing) {
                         //recalculate un_hist_comp
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
                         double fm_re = 0.0;
-                        double beta = 1.0;
-                        double un_rec = 0.0; //normalized recovery displacement
+                        double beta = 1.0;                        
                         //Calculate dynamically the beta coefficient according to Facconi                        
-                        un_rec = (un_hist_comp - un_ro) / ucel_;
+                        double un_rec = (un_hist_comp - un_ro) / ucel_;
+                        double un_rec_nz = std::max(0.0, un_rec);  // avoid NaN from negative base
+                        double root_term = std::pow(un_rec_nz, 0.5);
+                        double pow02_term = std::pow(un_rec_nz, 0.2);
                         if (un_hist_comp < ucel_) {
-                            beta = 1 / (1 + 0.20 * (pow(un_rec, 0.5)));
+                            beta = 1 / (1 + 0.20 * (root_term));
                         }
                         else {
-                            beta = 1 / (1 + 0.45 * (pow(un_rec, 0.2)));
+                            beta = 1 / (1 + 0.45 * (pow02_term));
                         }
 
                         //Second check: if denom is still too small, avoid division
@@ -630,12 +641,12 @@ namespace jmodels
         if (s->state_ || jumptoDC) {
             if ((un_current >= ucel_) && (un_current < ucul_)) {
                 dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
-                if (dn_> 0.0) peak_normal = std::min(peak_normal,compression_ * (1 - dc));
+                if (isClosing) peak_normal = std::min(peak_normal,compression_ * (1 - dc));
             }
             else if (un_current >= ucul_) {
                 double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
                 dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
-                if (dn_ > 0.0) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
+                if (isClosing) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
             }
             else {
                 dc = 0.0;
@@ -656,7 +667,7 @@ namespace jmodels
         //Define the softening tensile strength
         if (s->state_)
         {
-            bool sign = std::signbit(dn_);
+            bool sign = !isClosing;
           
             if (sign) {
                 if (iTension_d_) {
