@@ -491,16 +491,15 @@ namespace jmodels
                         double B1 = k1 / Es;
                         double B3 = 2 - (k2 / Es) * (1 + B1);
                         double B2 = B1 - B3;
-                        double Xeta = ((un_current+dn_) - un_hist_comp) / (un_plastic - un_hist_comp);
+                        double Xeta = ((un_current) - un_hist_comp) / (un_plastic - un_hist_comp);
 						//Xeta = clamp01(Xeta);
                         double fm = 1e-16;
                         fm = peak_normal + (1e-16 - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
-                        if (fm < 1e-16) fm = 1e-16;
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
                         fm_ro = fm;
-                        un_ro = un_current+dn_;
+                        un_ro = un_current;
                          //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
                     }
@@ -508,7 +507,7 @@ namespace jmodels
                         fm_ro = 0.0;
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0.0;
+                        s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
                     else {
@@ -524,7 +523,7 @@ namespace jmodels
                     if (un_current + dn_ < un_ro && dn_ >= 0.0) {
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
-                        s->normal_force_ += 0.0;
+                        s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
                     else if (reloadFlag == 1 && dn_ >= 0.0) {
@@ -672,9 +671,9 @@ namespace jmodels
             if (dt_hist < dt) dt_hist = dt;
             else dt = dt_hist;
             d_ts = dt + ds - dt * ds;
-            /*dt = clamp01(dt);
+            dt = clamp01(dt);
             dt_hist = clamp01(dt_hist);
-            d_ts = clamp01(dt + ds - dt * ds);*/
+            d_ts = clamp01(dt + ds - dt * ds);
             // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
             // Tension softening guard
             const double uel_t = tension_ / kn_initial_;
@@ -730,9 +729,9 @@ namespace jmodels
                 if (ds >= ds_hist) ds_hist = ds;
                 else ds = ds_hist;
                 d_ts = dt + ds - dt * ds;
-                /*ds = clamp01(ds);
+                ds = clamp01(ds);
                 ds_hist = clamp01(ds_hist);
-                d_ts = clamp01(dt + ds - dt * ds);*/
+                d_ts = clamp01(dt + ds - dt * ds);
                 double resamueff = tan_res_friction_;
                 if (!resamueff) resamueff = tan_friction_;
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
