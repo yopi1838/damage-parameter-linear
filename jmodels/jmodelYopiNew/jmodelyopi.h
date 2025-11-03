@@ -92,6 +92,8 @@ namespace jmodels
         double dil_hist;
         double ddil;
         double ksechist;
+        double utemp; //temporary normal displacement to store the damaged compressive displacement.
+        double ftemp_comp;
     };
 } // namespace models
 

@@ -37,8 +37,6 @@ extern "C" __declspec(dllexport) void* createInstance()
 
 namespace jmodels
 {
-    
-    static constexpr double kSmallForce = 1e-12; // small positive force to avoid exact-zero branches / div-by-zero
     static const double dPi = 3.141592653589793238462643383279502884197169399;
     static const double dDegRad = dPi / 180.0;
     static inline double clamp01(double v) {
@@ -411,9 +409,7 @@ namespace jmodels
             //s->working_[Dqkn] = 0.0;
             s->working_[Dqc] = 0.0;
             s->working_[5] = 0.0;
-        }
-
-        double uel = 0.0;
+        }        
         double ucel_ = n_ * compression_ / kn_comp_;
 
         // normal force
@@ -422,24 +418,18 @@ namespace jmodels
         double sn_ = s->normal_force_ / s->area_; //negative in tension
         double dn_ = s->normal_disp_inc_ * (-1.0); //negative in tension
         double un_current = s->normal_disp_ * (-1.0);
+
         //Calculate elastic limit
         double fel_limit = compression_ / 5.0;
         double fpeak = compression_;
         double ftemp = 0.0;
         double dsn_ = kn_initial_ * dn_;
-
-        // un_current >= 0 is compression (in contact)
-        bool inContact = (un_current >= 0.0);
-
-        // dn_ < 0 is opening (tensile increment)
-        // dn_ >= 0 is closing (compressive increment)
-        bool isClosing = (dn_ >= 0.0);
-
-        //Define the hardening part of the compressive strength here
+        double kEps = 1e-12;
+        
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
-        if (!inContact) {
-            if (!isClosing && (un_current + dn_) <= un_hist_ten) {
+        if (un_current < 0.0) {
+            if (dn_ < 0.0 && (un_current + dn_) <= un_hist_ten) {
                 // keep your history update
                 un_hist_ten = s->normal_disp_ * (-1.0);
                 s->working_[D_un_hist] = un_hist_ten;
@@ -448,12 +438,11 @@ namespace jmodels
             s->normal_force_inc_ = kna_t * dn_;
             s->normal_force_ += s->normal_force_inc_;
         }
-        else {
-            //COMPRESSION BRANCH --------------------------------------------------
-            if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && isClosing) {
+        else {//COMPRESSION BRANCH --------------------------------------------------
+            if (un_current + dn_ >= un_hist_comp && reloadFlag == 0 && dn_ >= 0.0) {
                 un_hist_comp = s->normal_disp_ * (-1.0); //Record the current displacement for unloading purposes            
             }
-            if ((sn_+dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
+            if ((sn_ + dsn_ >= peak_normal) && ((s->state_ & comp_past) == 0)) { // Loading   
                 kna = kn_comp_ * s->area_;
                 reloadFlag = 0;
                 if (un_current + dn_ <= uel_limit) {
@@ -461,9 +450,9 @@ namespace jmodels
                     s->normal_force_inc_ = kna * dn_;
                     s->normal_force_ += s->normal_force_inc_;
                     fc_current = s->normal_force_ / s->area_;
-					peak_normal = s->normal_force_ / s->area_;
+                    peak_normal = s->normal_force_ / s->area_;
                 }
-                else if (!s->state_ || sn_+dsn_ < compression_) {
+                else if (!s->state_ || sn_ + dsn_ < compression_) {
                     double x_new = ((un_current + dn_) - uel_limit) / ucel_;
                     plasFlag = 1;
 
@@ -474,7 +463,9 @@ namespace jmodels
                         };
                     ftemp = fel_limit + (fpeak - fel_limit) * safe_sqrt_expr(x_new);
                     s->normal_force_inc_ = 0;
-                    if (ftemp / (un_current + dn_) >= kn_comp_) s->normal_force_ += kna * dn_;
+                    double denom_un = (un_current + dn_);
+                    if (std::abs(denom_un) < kEps) denom_un = (denom_un >= 0 ? kEps : -kEps);
+                    if (ftemp / denom_un >= kn_comp_) s->normal_force_ += kna * dn_;
                     else s->normal_force_ = ftemp * s->area_;
                     fc_current = s->normal_force_ / s->area_;
                     plasFlag = 1;
@@ -488,39 +479,60 @@ namespace jmodels
                 //Unloading in compression
                 double mult = 1.0;
                 if (dc > 0.0) mult = 2.5;
-                double un_plastic_rat = 0.47 *mult * pow((un_hist_comp / ucel_), 2) + 0.5 * mult * (un_hist_comp / ucel_);
+                double un_plastic_rat = 0.47 * mult * pow((un_hist_comp / ucel_), 2) + 0.5 * mult * (un_hist_comp / ucel_);
                 double un_plastic = un_plastic_rat * ucel_;
-                if (!isClosing && (plasFlag == 1)) { //unloading from compression                    
+                if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression                    
                     if (un_current + dn_ >= un_hist_comp * 0.99) pertFlag = 2;
                     else pertFlag = 0;
-                    if (sn_ > 0.0 && (pertFlag == 0)) {
+                    if (sn_ > 1e-12 && (pertFlag == 0)) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
-						double denom_Es = un_hist_comp - un_plastic;
-                        double Es = peak_normal / denom_Es;						
+
+
+                        // Es denominator guard
+                        double denom_Es = (un_hist_comp - un_plastic);
+                        if (std::abs(denom_Es) < kEps) denom_Es = (denom_Es >= 0 ? kEps : -kEps);
+                        double Es = peak_normal / denom_Es;
+
+                        // Xeta denominator guard
+                        double denom_X = (un_plastic - un_hist_comp);
+                        if (std::abs(denom_X) < kEps) denom_X = (denom_X >= 0 ? kEps : -kEps);
+                        double Xeta = (un_current - un_hist_comp) / denom_X;
                         double B1 = k1 / Es;
                         double B3 = 2 - (k2 / Es) * (1 + B1);
                         double B2 = B1 - B3;
-                        double Xeta = ((un_current) - un_hist_comp) / (un_plastic - un_hist_comp);
-                        double fm = kSmallForce;
-                        fm = peak_normal + (kSmallForce - peak_normal) * ((B1 * Xeta + pow(Xeta, 2)) / (1 + B2 * Xeta + B3 * pow(Xeta, 2)));
+
+                        // Rational denominator guard
+                        double denom_R = 1.0 + B2 * Xeta + B3 * Xeta * Xeta;
+                        if (std::abs(denom_R) < kEps) denom_R = (denom_R >= 0 ? kEps : -kEps);
+                        // fm stays finite
+                        double numer_R = (B1 * Xeta + Xeta * Xeta);
+                        double fm = peak_normal + (1e-12 - peak_normal) * (numer_R / denom_R);
+                        if (!std::isfinite(fm)) {
+                            // fallback to linear elastic unloading
+                            fm = peak_normal + kn_comp_ * (un_current - un_hist_comp);
+                        }
                         s->normal_force_inc_ = 0;
                         s->normal_force_ = fm * s->area_;
                         fc_current = fm;
-                        fm_ro = fm;
-                        un_ro = un_current;
-                         //Record the current displacement for unloading purposes       
+
+                        //Record the current displacement for unloading purposes       
                         reloadFlag = 1.0;
+                        fm_ro = fm;
+                        un_ro = un_current + dn_;
                     }
                     else if (sn_ <= 0.0) {
                         fm_ro = 0.0;
                         reloadFlag = 1;
-                        s->normal_force_inc_ = 0.0;
+                        double wc_ = (1 - dt) * (1 - dc) * kn_initial_;
+                        kna = wc_ * s->area_;
+                        s->normal_force_inc_ = kna * dn_;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
                     else {
                         //Elastic unloading
+                        fm_ro = 0.0;
                         reloadFlag = 0;
                         kna = kn_comp_ * s->area_;
                         s->normal_force_inc_ = kna * dn_;
@@ -529,29 +541,26 @@ namespace jmodels
                     }
                 }
                 else {
-                    if (un_current + dn_ < un_ro && isClosing) {
+                    if (un_current + dn_ < un_ro && dn_ >= 0.0) {
                         reloadFlag = 1;
                         s->normal_force_inc_ = 0.0;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
-                    else if (reloadFlag == 1 && isClosing) {
+                    else if (reloadFlag == 1 && dn_ >= 0.0) {
                         //recalculate un_hist_comp
                         double denom = un_hist_comp;
                         if (un_ro) denom = un_hist_comp - un_ro;
                         double k_re = kn_initial_;
                         double fm_re = 0.0;
-                        double beta = 1.0;                        
-                        //Calculate dynamically the beta coefficient according to Facconi                        
+                        double beta = 1.0;
                         double un_rec = (un_hist_comp - un_ro) / ucel_;
-                        double un_rec_nz = std::max(0.0, un_rec);  // avoid NaN from negative base
-                        double root_term = std::pow(un_rec_nz, 0.5);
-                        double pow02_term = std::pow(un_rec_nz, 0.2);
+                        double un_rec_nz = std::max(0.0, un_rec);
                         if (un_hist_comp < ucel_) {
-                            beta = 1 / (1 + 0.20 * (root_term));
+                            beta = 1.0 / (1.0 + 0.20 * std::sqrt(un_rec_nz));
                         }
                         else {
-                            beta = 1 / (1 + 0.45 * (pow02_term));
+                            beta = 1.0 / (1.0 + 0.35 * std::pow(un_rec_nz, 0.2));
                         }
 
                         //Second check: if denom is still too small, avoid division
@@ -609,10 +618,9 @@ namespace jmodels
                             throw std::runtime_error("NaN encountered here 4");
                         }*/
                     }
-                }
-            } //unloading  
-        }
-
+                } //unloading  
+            }
+		} //compression
         // correction for time step in which joint opens (or goes into tension)
         // s->dnop_ is part of s->normal_disp_inc_ at which separation or tension takes place
         s->dnop_ = s->normal_disp_inc_;
@@ -625,8 +633,7 @@ namespace jmodels
         }
 
         double ten;
-        double comp = 0.0;
-        uel = tension_ / kn_; //elastic limit on tension    
+        double comp = 0.0;            
         if (!res_comp_) res_comp_ = 0.0;
         double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
         double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
@@ -641,12 +648,12 @@ namespace jmodels
         if (s->state_ || jumptoDC) {
             if ((un_current >= ucel_) && (un_current < ucul_)) {
                 dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
-                if (isClosing) peak_normal = std::min(peak_normal,compression_ * (1 - dc));
+                if (dn_ > 0.0) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
             }
             else if (un_current >= ucul_) {
                 double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
                 dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
-                if (isClosing) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
+                if (dn_ > 0.0) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
             }
             else {
                 dc = 0.0;
@@ -667,32 +674,53 @@ namespace jmodels
         //Define the softening tensile strength
         if (s->state_)
         {
-            bool sign = !isClosing;
-          
-            if (sign) {
-                if (iTension_d_) {
-                    tP_ = s->normal_disp_ / (tension_ / kn_);
-                    dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+            bool sign = std::signbit(dn_);     
+            if (reloadFlag == 1 && sn_ < -tension_ * (1 - d_ts)) { //if 
+                //if table_dt is provided.
+                ////Exponential Softening                
+                if (sign) {
+                    if (iTension_d_) {
+                        tP_ = un_hist_ten * (-1.0) / (tension_ / kn_initial_);
+                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                    }
+                    else if (G_I) {
+                        dt = 1.0 - exp(-tension_ / G_I * (un_hist_ten * (-1.0) - (tension_ / kn_initial_))); //Exponential Softening
+                    }
+                    un_hist_ten += dn_;
                 }
-                else if (G_I) {
-                    tP_ = s->normal_disp_ - (tension_ / kn_initial_);
-                    dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
-                }
-            }            
-            if (dt_hist < dt) dt_hist = dt;
-            else dt = dt_hist;
-            d_ts = dt + ds - dt * ds;
-            dt = clamp01(dt);
-            dt_hist = clamp01(dt_hist);
-            d_ts = clamp01(dt + ds - dt * ds);
-            // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
-            // Tension softening guard
-            const double uel_t = tension_ / kn_initial_;
-            if (un_current < (-uel_t)) {
+                if (dt_hist < dt) dt_hist = dt;
+                else dt = dt_hist;
+                d_ts = dt + ds - dt * ds;
                 // Tension softening guard
                 if (std::abs(un_hist_ten) > 1e-12) {
                     if (sign) {
                         kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                    }
+                }
+            }
+            else {
+                if (sign) {
+                    if (iTension_d_) {
+                        tP_ = s->normal_disp_ / (tension_ / kn_);
+                        dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
+                    }
+                    else if (G_I) {
+                        tP_ = s->normal_disp_ - (tension_ / kn_initial_);
+                        dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
+                    }
+                }
+                if (dt_hist < dt) dt_hist = dt;
+                else dt = dt_hist;
+                d_ts = dt + ds - dt * ds;
+                // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
+                // Tension softening guard
+                double uel_t = tension_ / kn_initial_;
+                if (un_current < (-uel_t)) {
+                    // Tension softening guard
+                    if (std::abs(un_hist_ten) > 1e-12) {
+                        if (sign) {
+                            kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                        }
                     }
                 }
             }
@@ -750,10 +778,11 @@ namespace jmodels
                 //Store the current friction angle
                 double tc = 0.0;
 
-                /*double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
+                double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
                 if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
-                else friction_current_ = atan(tan_friction_) / dDegRad;*/
+                else friction_current_ = atan(tan_friction_) / dDegRad;
                 friction_current_ = (friction_ + dil_0);
+                tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
 
                 if (dilation_) {
                     if (!s->state_) {
@@ -826,7 +855,6 @@ namespace jmodels
             || std::isnan(s->shear_force_.y()) || std::isnan(s->shear_force_.z())) {
             throw std::runtime_error("NaN detected in JModelYopi::run shear side");
         }
-
     }//run
 
 
@@ -858,52 +886,34 @@ namespace jmodels
 
     void JModelYopi::compCorrection(State* s, uint32* IPlasticity, double& comp) {
         if (IPlasticity) *IPlasticity = 3;
-        double gradient = s->shear_force_.mag();
-        double X_yield;
-        double Y_yield;
-        double x;
-        double ratc = 0.0;
-        double y;
-        double a;
-        double b;
-        double c;
-        bool compFlag = false;
         s->state_ |= comp_now;
-        //Calculate the radial distance from point to the origin
-        x = (s->normal_force_); //normal force would be larger than the position of Cn
-        y = s->shear_force_.mag();
 
-        //Calculate the gradient intercept here
-        if (x > 0.0) gradient = y / x; //Use this gradient to find the intersection point at the ellipsis
-        else gradient = s->shear_force_.mag();
+        constexpr double EPS = 1e-12;
 
-        //Find the intercept from the gradient at the yield surface
-        a = Cnn + Css * pow(gradient, 2);
-        b = Cn;
-        c = -pow(comp, 2);
-        X_yield = solveQuadratic(a, b, c);
-        Y_yield = gradient * X_yield;
+        const double x = s->normal_force_;
+        const double y = s->shear_force_.mag();
 
-        R_violates = sqrt(pow(x, 2) + pow(y, 2));
-        R_yield = sqrt(pow(X_yield, 2) + pow(Y_yield, 2));
+        // Solve for lambda such that (lambda*x, lambda*y) lies on the cap:
+        const double A = Cnn * x * x + Css * y * y;
+        const double B = Cn * x;
+        const double C = -comp * comp;
 
-        //Correct the normal and shear forces to the yield surface        
-        if (R_violates) ratc = R_yield / R_violates;
-        if (!s->normal_force_) {
-            s->shear_force_ = DVect3(0, 0, 0);
-            compFlag = true;
-        }
+        const double lambda = std::max(0.0, solveQuadratic(A, B, C)); // picks the larger root
+        double ratc = lambda;
+
         if (dc >= 0.99) {
-            //Full brittle failure
-            s->normal_force_ = res_comp_ * s->area_;;
+            s->normal_force_ = res_comp_ * s->area_;
+            s->shear_force_ = DVect3(0, 0, 0);
         }
         else {
-            s->normal_force_ = X_yield;
-            s->shear_force_ *= ratc;
+            s->normal_force_ = lambda * x;                  // note: this is force, not stress
+            if (y > EPS) s->shear_force_ *= (ratc);         // scale vectorially
+            else         s->shear_force_ = DVect3(0, 0, 0);
         }
+
         s->normal_force_inc_ = 0.0;
         s->shear_force_inc_ = DVect3(0, 0, 0);
-    }
+    }    
 } // namespace models
 
 
