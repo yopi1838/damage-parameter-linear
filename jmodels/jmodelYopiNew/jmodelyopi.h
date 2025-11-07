@@ -4,6 +4,7 @@
 
 namespace jmodels
 {
+    
     class JModelYopi : public JointModel {
     public:
         JModelYopi();

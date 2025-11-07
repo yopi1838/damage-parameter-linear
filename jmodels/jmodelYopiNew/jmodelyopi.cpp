@@ -42,6 +42,12 @@ namespace jmodels
     static inline double clamp01(double v) {
         return (v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v));
     }
+    inline double clampToBand(double v, double lo, double hi) {
+        if (!std::isfinite(v)) return lo;
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    }
 
     // Plasticity Indicators
     static const uint32 slip_now = 0x01;  /* state logic */
@@ -370,17 +376,29 @@ namespace jmodels
         if (!Css)          Css = 9.0;
     }
 
+    // numerically-stable quadratic (q-formula) + finite clamp
     double JModelYopi::solveQuadratic(double a, double b, double c) {
-        double disc = b * b - 4 * a * c;
-        if (std::abs(a) < 1e-12) {
-            // SAFE: avoid division by zero
-            return (std::abs(b) > 1e-12) ? -c / b : 0.0;
+        // Returns the larger real root (used for projection), clamped finite.
+        if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c)) return 0.0;
+        if (std::abs(a) < 1e-18) {
+            if (std::abs(b) < 1e-18) return 0.0;
+            double x = -c / b;
+            return std::isfinite(x) ? x : 0.0;
         }
-        if (disc < 0.0) disc = 0.0; // SAFE: clamp negative
+        double disc = b * b - 4.0 * a * c;
+        if (!std::isfinite(disc)) {
+            const double scale = std::max({ std::abs(a), std::abs(b), std::abs(c), 1.0 });
+            a /= scale; b /= scale; c /= scale;
+            disc = b * b - 4.0 * a * c;
+        }
+        if (disc < 0.0) disc = 0.0;
         double root_disc = std::sqrt(disc);
-        double x1 = (-b + root_disc) / (2 * a);
-        double x2 = (-b - root_disc) / (2 * a);
-        return (x1 > x2) ? x1 : x2;
+        // q-formula
+        double q = -0.5 * (b + std::copysign(root_disc, b));
+        double x1 = q / a;
+        double x2 = (std::abs(q) > 1e-18) ? (c / q) : 0.0;
+        double xr = (x1 > x2) ? x1 : x2;
+        return std::isfinite(xr) ? xr : 0.0;
     }
 
     void JModelYopi::run(uint32 dim, State* s)
@@ -484,7 +502,7 @@ namespace jmodels
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression                    
                     if (un_current + dn_ >= un_hist_comp * 0.99) pertFlag = 2;
                     else pertFlag = 0;
-                    if (sn_ > 1e-12 && (pertFlag == 0)) {
+                    if (sn_ > 0.0 && (pertFlag == 0)) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
 
@@ -524,9 +542,9 @@ namespace jmodels
                     else if (sn_ <= 0.0) {
                         fm_ro = 0.0;
                         reloadFlag = 1;
-                        double wc_ = (1 - dt) * (1 - dc) * kn_initial_;
-                        kna = wc_ * s->area_;
-                        s->normal_force_inc_ = kna * dn_;
+                        /*double wc_ = (1 - dt) * (1 - dc) * kn_initial_;
+                        kna = wc_ * s->area_;*/
+                        s->normal_force_inc_ = 0.0;
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = 0.0;
                     }
@@ -692,9 +710,12 @@ namespace jmodels
                 else dt = dt_hist;
                 d_ts = dt + ds - dt * ds;
                 // Tension softening guard
-                if (std::abs(un_hist_ten) > 1e-12) {
+                if (std::abs(un_hist_ten) > 1e-9) {
                     if (sign) {
                         kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                        const double kn_lo = kn_initial_ * 1e-3;
+                        const double kn_hi = kn_initial_ * 1e3;
+                        kn_ = clampToBand(kn_, kn_lo, kn_hi);
                     }
                 }
             }
@@ -716,10 +737,12 @@ namespace jmodels
                 // Tension softening guard
                 double uel_t = tension_ / kn_initial_;
                 if (un_current < (-uel_t)) {
-                    // Tension softening guard
-                    if (std::abs(un_hist_ten) > 1e-12) {
+                    if (std::abs(un_hist_ten) > 1e-9) {
                         if (sign) {
                             kn_ = (tension_ * (1.0 - d_ts + 1e-6) / -un_hist_ten);
+                            const double kn_lo = kn_initial_ * 1e-3;
+                            const double kn_hi = kn_initial_ * 1e3;
+                            kn_ = clampToBand(kn_, kn_lo, kn_hi);
                         }
                     }
                 }
@@ -893,27 +916,57 @@ namespace jmodels
         const double x = s->normal_force_;
         const double y = s->shear_force_.mag();
 
-        // Solve for lambda such that (lambda*x, lambda*y) lies on the cap:
-        const double A = Cnn * x * x + Css * y * y;
-        const double B = Cn * x;
-        const double C = -comp * comp;
+        // If the point is already at the origin, do nothing
+        if (std::abs(x) < EPS && std::abs(y) < EPS) {
+            s->normal_force_inc_ = 0.0;
+            s->shear_force_inc_ = DVect3(0, 0, 0);
+            return;
+        }
 
-        const double lambda = std::max(0.0, solveQuadratic(A, B, C)); // picks the larger root
-        double ratc = lambda;
+        // To improve numerical stability, solve the scaled equation:
+        const double scale = std::max({ std::abs(x), std::abs(y), 1.0 });
+        const double xs = x / scale;
+        const double ys = y / scale;
 
+        const double A = Cnn * xs * xs + Css * ys * ys;
+        const double B = (Cn * xs) / scale;
+        const double C = -(comp * comp) / (scale * scale);
+
+        double lambda = solveQuadratic(A, B, C);
+
+
+        if (!std::isfinite(lambda)) lambda = 0.0;
+        if (lambda < 0.0) lambda = 0.0;
+        if (lambda > 1.0) lambda = 1.0;
+
+        // Full degradation branch
         if (dc >= 0.99) {
+            // Residual compressive capacity (shear to zero at the cap)
             s->normal_force_ = res_comp_ * s->area_;
             s->shear_force_ = DVect3(0, 0, 0);
         }
         else {
-            s->normal_force_ = lambda * x;                  // note: this is force, not stress
-            if (y > EPS) s->shear_force_ *= (ratc);         // scale vectorially
-            else         s->shear_force_ = DVect3(0, 0, 0);
+            // Scale forces back to the cap along the ray from the origin
+            s->normal_force_ = lambda * x;
+            if (y > EPS) {
+                const double ratc = lambda;
+                s->shear_force_ *= ratc;    // preserve direction, scale magnitude
+            }
+            else {
+                s->shear_force_ = DVect3(0, 0, 0);
+            }
         }
 
+        // Clear increments (consistent with your existing convention)
         s->normal_force_inc_ = 0.0;
         s->shear_force_inc_ = DVect3(0, 0, 0);
-    }    
+
+        // Final safety check: catch Inf/overflow even when not NaN
+        const auto badnum = [](double v) { return !std::isfinite(v) || std::abs(v) > 1e300; };
+        if (badnum(s->normal_force_) || badnum(s->shear_force_.mag())) {
+            throw std::runtime_error("JModelYopi::compCorrection produced non-finite/overflowed forces");
+        }
+    }
 } // namespace models
 
 
