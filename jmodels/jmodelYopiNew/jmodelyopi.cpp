@@ -42,6 +42,13 @@ namespace jmodels
     static inline double clamp01(double v) {
         return (v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v));
     }
+    // Clamp damage variables in [0,1] and snap to 1 once they are "close enough"
+    // to avoid asymptotic approach without ever numerically reaching 1.
+    inline double clampDamage(double v) {
+        if (v <= 0.0) return 0.0;
+        if (v >= 1.0 - 1e-8) return 1.0;
+        return v;
+    }
     inline double clampToBand(double v, double lo, double hi) {
         if (!std::isfinite(v)) return lo;
         if (v < lo) return lo;
@@ -61,8 +68,6 @@ namespace jmodels
         kn_(0),
         kn_initial_(0),
         ks_(0),
-        kn_tab_(0),
-        ks_tab_(0),
         cohesion_(0),
         compression_(0),
         friction_(0),
@@ -111,27 +116,33 @@ namespace jmodels
         dilation_current(0),
         un_dilatant(0),
         dil_hist(0),
-        ddil(0),
-        ksechist(0)
+        ddil(0)
     {
     }
 
+    JModelYopi::~JModelYopi()
+    {
+        // Clean up any allocated resources here
+        if (energies_)
+			delete energies_;
+	}
+
     string JModelYopi::getName() const
     {
-#ifdef JMODELDEBUG
-        return "yopid";
-#else
-        return "yopi";
-#endif
+        #ifdef JMODELDEBUG
+                return "yopid";
+        #else
+                return "yopi";
+        #endif
     }
 
     string JModelYopi::getFullName() const
     {
-#ifdef JMODELDEBUG
-        return "Yopi Debug";
-#else
-        return "Yopi";
-#endif
+        #ifdef JMODELDEBUG
+                return "Yopi Debug";
+        #else
+                return "Yopi";
+        #endif
     }
 
     uint32 JModelYopi::getMinorVersion() const
@@ -206,7 +217,6 @@ namespace jmodels
         case 45: return dil_hist;
         case 46: return ddil;
         case 47: return reloadFlag;
-        case 48: return ksechist;
         }
         return 0.0;
     }
@@ -263,7 +273,6 @@ namespace jmodels
         case 45: dil_hist = prop.to<double>(); break;
         case 46: ddil = prop.to<double>(); break;
         case 47: reloadFlag = prop.to<double>(); break;
-        case 48: ksechist = prop.to<double>(); break;
         }
     }
 
@@ -326,7 +335,6 @@ namespace jmodels
         dil_hist = mm->dil_hist;
         ddil = mm->ddil;
         reloadFlag = mm->reloadFlag;
-        ksechist = mm->ksechist;
     }
 
     void JModelYopi::initialize(uint32 dim, State* s)
@@ -401,6 +409,44 @@ namespace jmodels
         return std::isfinite(xr) ? xr : 0.0;
     }
 
+    double JModelYopi::getEnergy(uint32 i) const 
+    {
+        double ret(0.0);
+        if (!energies_)
+			return ret;
+        switch (i) {
+		    case kwETension:  return energies_->etension_;
+            case kwECompression:  return energies_->ecompression_;
+            case kwEShear:    return energies_->eshear_;
+        }
+        assert(0);
+		return ret;
+    }
+
+    bool JModelYopi::getEnergyAccumulate(uint32 i) const {
+        // Returns TRUE if the corresponding energy is accumulated or FALSE otherwise.
+        switch (i) {
+		case kwETension:  return true; //Accumulate normal energy based on mode-I fracture energy
+		case kwECompression:  return true; //Accumulate normal energy based on mode-I fracture energy
+        case kwEShear:    return true;
+        }
+        assert(0);
+        return false;
+    }
+
+    void JModelYopi::setEnergy(uint32 i, const double& d) {
+        // Set an energy value. 
+        if (!energies_) return;
+        switch (i) {
+		case kwETension:  energies_->etension_ = d; return;
+        case kwECompression:  energies_->ecompression_ = d; return;
+        case kwEShear:    energies_->eshear_ = d; return;
+        }
+        assert(0);
+        return;
+    }
+
+
     void JModelYopi::run(uint32 dim, State* s)
     {
         JointModel::run(dim, s);
@@ -414,6 +460,13 @@ namespace jmodels
         if (s->state_ & comp_now) s->state_ |= comp_past;
         s->state_ &= ~comp_now;
         uint32 IPlas = 0;
+        
+        // Save old forces for energy calculation (beginning of step)
+        const double fn_old = s->normal_force_;   // + = compression, - = tension
+        const DVect3 fs_old = s->shear_force_;    // shear force vector
+
+        // Ensure energy structure is allocated once tracking is requested
+        activateEnergy();        
 
         if (!s->area_) return;
 
@@ -443,7 +496,7 @@ namespace jmodels
         double ftemp = 0.0;
         double dsn_ = kn_initial_ * dn_;
         double kEps = 1e-12;
-        
+
         // --- TENSION BRANCH --------------------------------------------------
         // Opening (dn_ < 0) = loading; Closing (dn_ > 0) = unloading (secant)        
         if (un_current < 0.0) {
@@ -497,7 +550,7 @@ namespace jmodels
                 //Unloading in compression
                 double mult = 1.0;
                 if (dc > 0.0) mult = 2.5;
-                double un_plastic_rat = 0.47 * mult * pow((un_hist_comp / ucel_), 2) + 0.5 * mult * (un_hist_comp / ucel_);
+                double un_plastic_rat = 0.47 * mult * (un_hist_comp / ucel_) * (un_hist_comp / ucel_) + 0.5 * mult * (un_hist_comp / ucel_);
                 double un_plastic = un_plastic_rat * ucel_;
                 if (dn_ < 0.0 && (plasFlag == 1)) { //unloading from compression                    
                     if (un_current + dn_ >= un_hist_comp * 0.99) pertFlag = 2;
@@ -505,7 +558,6 @@ namespace jmodels
                     if (sn_ > 0.0 && (pertFlag == 0)) {
                         double k1 = 1.5 * kn_comp_;
                         double k2 = 0.15 * kn_comp_ / pow(1 + (un_hist_comp / ucel_), 2);
-
 
                         // Es denominator guard
                         double denom_Es = (un_hist_comp - un_plastic);
@@ -557,6 +609,11 @@ namespace jmodels
                         s->normal_force_ += s->normal_force_inc_;
                         fc_current = s->normal_force_ / s->area_;
                     }
+                }
+                else if (!s->state_) {
+                    kna = kn_comp_ * s->area_;
+                    s->normal_force_inc_ = kna * dn_;
+                    s->normal_force_ += s->normal_force_inc_;
                 }
                 else {
                     if (un_current + dn_ < un_ro && dn_ >= 0.0) {
@@ -676,8 +733,12 @@ namespace jmodels
             else {
                 dc = 0.0;
             }
+            // Clamp compressive damage to avoid infinite approach to 1
+            dc = clampDamage(dc);
+            dc_hist = clampDamage(dc_hist);
             if (dc >= dc_hist) dc_hist = dc;
             else dc = dc_hist;
+
             s->normal_force_inc_ = 0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
             comp = compression_ * (1 - dc) * s->area_;
@@ -708,7 +769,10 @@ namespace jmodels
                 }
                 if (dt_hist < dt) dt_hist = dt;
                 else dt = dt_hist;
-                d_ts = dt + ds - dt * ds;
+                // Clamp tensile damage to avoid infinite approach to 1
+                dt = clampDamage(dt);
+                dt_hist = clampDamage(dt_hist);
+                d_ts = clampDamage(dt + ds - dt * ds);
                 // Tension softening guard
                 if (std::abs(un_hist_ten) > 1e-9) {
                     if (sign) {
@@ -732,7 +796,10 @@ namespace jmodels
                 }
                 if (dt_hist < dt) dt_hist = dt;
                 else dt = dt_hist;
-                d_ts = dt + ds - dt * ds;
+                // Clamp tensile damage to avoid infinite approach to 1
+                dt = clampDamage(dt);
+                dt_hist = clampDamage(dt_hist);
+                d_ts = clampDamage(dt + ds - dt * ds);
                 // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
                 // Tension softening guard
                 double uel_t = tension_ / kn_initial_;
@@ -757,9 +824,10 @@ namespace jmodels
         // Change the criterion to f1 criterion for tensile instead
         if (f1 <= 0)
         {
-            tensionCorrection(s, &IPlas, ten);
+            tenflag = tensionCorrection(s, &IPlas, ten,tenflag);
         }
-        bool compflag = false;
+        // Compressive cap "failure" flag: when dc is near fully damaged in compression
+        const bool compflag = (dc >= 0.99);
         // shear force
         if (!tenflag && !compflag)
         {
@@ -790,10 +858,11 @@ namespace jmodels
                 }
                 if (ds >= ds_hist) ds_hist = ds;
                 else ds = ds_hist;
-                d_ts = dt + ds - dt * ds;
-                ds = clamp01(ds);
-                ds_hist = clamp01(ds_hist);
-                d_ts = clamp01(dt + ds - dt * ds);
+
+                // Clamp shear damage to avoid infinite approach to 1
+                ds = clampDamage(ds);
+                ds_hist = clampDamage(ds_hist);
+                d_ts = clampDamage(dt + ds - dt * ds);
                 double resamueff = tan_res_friction_;
                 if (!resamueff) resamueff = tan_friction_;
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
@@ -866,9 +935,54 @@ namespace jmodels
                     }
                 }
             }//s->normal_disp < 0.0
-        } // if (!tenflg)
+        } // if (!tenflag && !compflag)
+        else {
+            // In open tension or full compressive cap failure, there is no shear transfer
+            s->shear_force_inc_ = DVect3(0.0, 0.0, 0.0);
+            s->shear_force_ = DVect3(0.0, 0.0, 0.0);
+        }
 
-        // store peak
+        // --- Energy accumulation (normal tension / compression + shear) ---
+        if (energies_) {
+            // New forces at end of the step
+            const double fn_new = s->normal_force_;
+            const DVect3 fs_new = s->shear_force_;
+
+            // Displacement increments for this step
+            // In your convention: normal_disp < 0 in compression.
+            // We define du_n > 0 for compression by flipping the sign.
+            const double du_n = -s->normal_disp_inc_;   // + = compression increment
+            const DVect3 du_s = s->shear_disp_inc_;     // shear slip increment
+
+            // Mean forces over the step
+            const double fn_mean = 0.5 * (fn_old + fn_new);
+            const DVect3 fs_mean(
+                0.5 * (fs_old.x() + fs_new.x()),
+                0.5 * (fs_old.y() + fs_new.y()),
+                0.5 * (fs_old.z() + fs_new.z())
+            );
+            // Incremental normal work (positive = storing elastic energy,
+            // negative = releasing it during unloading / damage).
+            const double dWn = fn_mean * du_n;
+
+            // Split normal energy into tension vs compression based on sign of mean force:
+            //   fn_mean >= 0  -> compression branch
+            //   fn_mean < 0   -> tension branch
+            if (fn_mean >= 0.0) {
+                energies_->ecompression_ += dWn;
+            }
+            else {
+                energies_->etension_ += dWn;
+            }
+
+            // Incremental shear work: fs · du_s
+            const double dWs =
+                fs_mean.x() * du_s.x() +
+                fs_mean.y() * du_s.y() +
+                fs_mean.z() * du_s.z();
+
+            energies_->eshear_ += dWs;
+        }
 
         // At end of run()
         if (std::isnan(s->normal_force_)) {
@@ -881,18 +995,18 @@ namespace jmodels
     }//run
 
 
-    void JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten) {
-        bool tenflag = false;
+    bool JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten, bool& tenflag) {
         if (IPlasticity) *IPlasticity = 1;
         s->normal_force_ = ten;
-        if (!s->normal_force_)
-        {
+        bool fullFailure = (std::abs(ten) < 1e-12);
+        if (fullFailure) {
             s->shear_force_ = DVect3(0, 0, 0);
             tenflag = true; // complete tensile failure
         }
         s->state_ |= tension_now;
         s->normal_force_inc_ = 0;
         s->shear_force_inc_ = DVect3(0, 0, 0);
+        return tenflag;
     }
 
     void JModelYopi::shearCorrection(State* s, uint32* IPlasticity, double& fsm, double& fsmax, double& usel) {
