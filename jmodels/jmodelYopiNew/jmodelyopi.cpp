@@ -799,7 +799,7 @@ namespace jmodels
                         if (sign) {
                             kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
                             const double kn_lo = kn_initial_ * 1e-3;
-                            const double kn_hi = kn_initial_ * 3;
+                            const double kn_hi = kn_initial_ * 3; //test
                             kn_ = clampToBand(kn_, kn_lo, kn_hi);
                         }
                     }
