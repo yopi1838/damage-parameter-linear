@@ -1,2 +1,4 @@
 .vs/
 x64/
+# allow just this one file back in
+!x64/Release/jmodelyopi009.dll
