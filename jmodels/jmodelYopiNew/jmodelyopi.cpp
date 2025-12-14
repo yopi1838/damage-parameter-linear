@@ -799,7 +799,7 @@ namespace jmodels
                         if (sign) {
                             kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
                             const double kn_lo = kn_initial_ * 1e-3;
-                            const double kn_hi = kn_initial_ * 1e3;
+                            const double kn_hi = kn_initial_ * 3;
                             kn_ = clampToBand(kn_, kn_lo, kn_hi);
                         }
                     }
@@ -988,8 +988,7 @@ namespace jmodels
     bool JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten, bool& tenflag) {
         if (IPlasticity) *IPlasticity = 1;
         s->normal_force_ = ten;
-        bool fullFailure = (std::abs(ten) < 1e-12);
-        if (fullFailure) {
+        if (!s->normal_force_) {
             s->shear_force_ = DVect3(0, 0, 0);
             tenflag = true; // complete tensile failure
         }
@@ -1021,7 +1020,7 @@ namespace jmodels
         const double y = s->shear_force_.mag();
 
         // If the point is already at the origin, do nothing
-        if (std::abs(x) < EPS && std::abs(y) < EPS) {
+        if (!s->normal_force_ && s->shear_force_.mag()) {
             s->normal_force_inc_ = 0.0;
             s->shear_force_inc_ = DVect3(0, 0, 0);
             return;
