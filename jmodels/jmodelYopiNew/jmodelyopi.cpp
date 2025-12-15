@@ -798,14 +798,14 @@ namespace jmodels
                     if (std::abs(un_hist_ten) > 1e-9) {
                         if (sign) {
                             kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
-                            const double kn_lo = kn_initial_ * 1e-3;
-                            const double kn_hi = kn_initial_ * 3; //test
-                            kn_ = clampToBand(kn_, kn_lo, kn_hi);
+                            //const double kn_lo = kn_initial_ * 1e-3;
+                            //const double kn_hi = kn_initial_ * 3; //test
+                            //kn_ = clampToBand(kn_, kn_lo, kn_hi);
                         }
                     }
                 }
             }
-            ten = -(res_tension_ + (tension_ - res_tension_) * ((1 - d_ts) + 1e-14)) * s->area_;
+            ten = -(res_tension_ + (tension_ - res_tension_) * ((1 - d_ts) + 1e-12)) * s->area_;
 
             // check tensile failure
             bool tenflag = false;
@@ -860,11 +860,11 @@ namespace jmodels
                     //Store the current friction angle
                     double tc = 0.0;
 
-                    double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
+                    /*double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
                     if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
                     else friction_current_ = atan(tan_friction_) / dDegRad;
                     friction_current_ = (friction_ + dil_0);
-                    tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+                    tc = cc * s->area_ + s->normal_force_ * tan_friction_c;*/
 
                     if (dilation_) {
                         if (!s->state_) {
