@@ -34,7 +34,9 @@ namespace jmodels
         virtual base::Property getProperty(uint32 index) const;
         virtual void           setProperty(uint32 index, const base::Property& p, uint32 restoreVersion = 0);
         virtual JModelYopi* clone() const { return new JModelYopi(); }
-        virtual double         getMaxNormalStiffness() const { return kn_; }
+        virtual double getMaxNormalStiffness() const override {
+            return std::max(kn_, kn_initial_);
+        }
         virtual double         getMaxShearStiffness() const { return ks_; }
         virtual void           copy(const JointModel* mod);
         virtual void           run(uint32 dim, State* s); // If !isValid(dim) calls initialize(dim,s)
