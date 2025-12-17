@@ -280,8 +280,7 @@ namespace jmodels
     static const uint32 Dqt = 1;
     static const uint32 Dqkn = 2;
     static const uint32 Dqc = 3;
-    static const uint32 D_un_hist = 4;
-    DVect3 last_shear_dir_; // previously used shear direction
+    static const uint32 D_un_hist = 4;    
 
     void JModelYopi::copy(const JointModel* m)
     {
@@ -341,17 +340,12 @@ namespace jmodels
     {
         JointModel::initialize(dim, s);
 
-        // Large-strain support:
-        // initialize() is called when the large-strain update is performed.
-        // Use iworking_[1] as a one-cycle flag to realign shear-force direction
-        // with the updated tangential slip direction in run().
-        s->iworking_[1] = 1;
 
         tan_friction_ = tan(friction_ * dDegRad);
         tan_res_friction_ = tan(res_friction_ * dDegRad);
         tan_dilation_ = tan(dilation_ * dDegRad);
         dilation_current = dilation_;
-        last_shear_dir_ = DVect3(0.0, 0.0, 0.0);
+        
 
         // Initialize compressive cap
         R_yield = 0.0;
@@ -596,11 +590,15 @@ namespace jmodels
 
                         // Xeta
                         double denom_X = (un_plastic - un_hist_comp);
-
+                        if (std::abs(denom_X) < kEps)
+                            denom_X = (denom_X >= 0.0 ? kEps : -kEps);
 
                         double Xeta = (un_new - un_hist_comp) / denom_X;
-                        // clamp Xeta to avoid extreme stiffness
-                        //Xeta = std::max(-1.0, std::min(0.0, Xeta));
+
+                        // clamp Xeta to avoid extreme stiffness / non-objective spikes
+                        if (Xeta < -5.0) Xeta = -5.0;
+                        else if (Xeta > 5.0) Xeta = 5.0;
+
 
                         double B1 = k1 / Es;
                         double B3 = 2.0 - (k2 / Es) * (1.0 + B1);
@@ -725,16 +723,6 @@ namespace jmodels
         // Central normal-force update (after tension/compression law)
         s->normal_force_inc_ = fn_new - fn_old;
         s->normal_force_ = fn_new;
-        // correction for time step in which joint opens (or goes into tension)
-        // s->dnop_ is part of s->normal_disp_inc_ at which separation or tension takes place
-        s->dnop_ = s->normal_disp_inc_;
-        if ((fn0 > 0.0) &&
-            (s->normal_force_ <= 0.0) &&
-            (s->normal_force_inc_ < 0.0))
-        {
-            s->dnop_ = -s->normal_disp_inc_ * fn0 / s->normal_force_inc_;
-            if (s->dnop_ > s->normal_disp_inc_) s->dnop_ = s->normal_disp_inc_;
-        }
 
         double ten;
         double comp = 0.0;
@@ -768,8 +756,6 @@ namespace jmodels
             if (dc >= dc_hist) dc_hist = dc;
             else dc = dc_hist;
 
-            s->normal_force_inc_ = 0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
             comp = compression_ * (1 - dc) * s->area_;
         }
         else {
@@ -810,6 +796,7 @@ namespace jmodels
                         {
                             kn_ = 1e-6;
                         }
+                        kn_ = clampToBand(kn_, 1e-6, kn_initial_);
                     }
                 }
             }
@@ -881,7 +868,9 @@ namespace jmodels
                     }
                     else if (dc == 0.0) {
                         double usm = s->shear_disp_.mag() - usel;
-                        double dilation_c = tan_dilation_ * (1 - (usm) / s_zero_dilation_) * exp(-delta * ((usm)));
+                        // Guard against division by zero / negative zero-dilation parameter
+                        const double zdd = (s_zero_dilation_ > 0.0 ? s_zero_dilation_ : 1e20);
+                        double dilation_c = tan_dilation_ * (1.0 - (usm / zdd)) * std::exp(-delta * usm);
                         if (dilation_c < 0.0) dilation_c = 0.0;
                         tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (atan(dilation_c) / dDegRad)) * dDegRad);
                         dilation_current = (atan(dilation_c) / dDegRad);
@@ -889,7 +878,8 @@ namespace jmodels
                         double dusm = s->shear_disp_inc_.mag();
                         if (ddil > 0.0 || dc == 0.0) {
                             un_dilatant += dilation_c * dusm;
-                            s->normal_force_ += kn_ * s->area_ * dilation_c * dusm;
+                            const double dfn_dil = kn_ * s->area_ * dilation_c * dusm;
+                            s->normal_force_ += dfn_dil; // apply ONCE
                         }
                     }
                     else {
@@ -978,6 +968,19 @@ namespace jmodels
 
             energies_->eshear_ += dWs;
         }
+        
+        // FIX: enforce step-consistent force increments after all projections/couplings
+        // (critical for large-strain runs where contact frames re-orient frequently)
+        s->normal_force_inc_ = s->normal_force_ - fn_old;
+        s->shear_force_inc_ = s->shear_force_ - fs_old;
+
+        // FIX: recompute dnop_ using the final increment (opening within the step)
+        s->dnop_ = s->normal_disp_inc_;
+        if ((fn0 > 0.0) && (s->normal_force_ <= 0.0) && (s->normal_force_inc_ < 0.0))
+        {
+            s->dnop_ = -s->normal_disp_inc_ * fn0 / s->normal_force_inc_;
+            if (s->dnop_ > s->normal_disp_inc_) s->dnop_ = s->normal_disp_inc_;
+        }
 
         // At end of run()
         if (std::isnan(s->normal_force_)) {
@@ -998,8 +1001,6 @@ namespace jmodels
             tenflag = true; // complete tensile failure
         }
         s->state_ |= tension_now;
-        s->normal_force_inc_ = 0;
-        s->shear_force_inc_ = DVect3(0, 0, 0);
         return tenflag;
     }
 
@@ -1009,7 +1010,6 @@ namespace jmodels
         if (fsm) rat = fsmax / fsm;
         s->shear_force_ *= rat;
         s->state_ |= slip_now;
-        s->shear_force_inc_ = DVect3(0, 0, 0);
         double k = usel;
         k = 0.0;
 
@@ -1026,8 +1026,6 @@ namespace jmodels
 
         // If the point is already at the origin, do nothing
         if (std::abs(s->normal_force_) < EPS && s->shear_force_.mag() < EPS) {
-            s->normal_force_inc_ = 0.0;
-            s->shear_force_inc_ = DVect3(0, 0, 0);
             return;
         }
 
@@ -1064,10 +1062,6 @@ namespace jmodels
                 s->shear_force_ = DVect3(0, 0, 0);
             }
         }
-
-        // Clear increments (consistent with your existing convention)
-        s->normal_force_inc_ = 0.0;
-        s->shear_force_inc_ = DVect3(0, 0, 0);
 
         // Final safety check: catch Inf/overflow even when not NaN
         const auto badnum = [](double v) { return !std::isfinite(v) || std::abs(v) > 1e300; };
