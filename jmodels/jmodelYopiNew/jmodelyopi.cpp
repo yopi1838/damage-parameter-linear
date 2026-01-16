@@ -46,7 +46,7 @@ namespace jmodels
     // to avoid asymptotic approach without ever numerically reaching 1.
     inline double clampDamage(double v) {
         if (v <= 0.0) return 0.0;
-        if (v >= 1.0 - 1e-8) return 1.0;
+        if (v >= 1.0) return 1.0;
         return v;
     }
     inline double clampToBand(double v, double lo, double hi) {
@@ -792,16 +792,30 @@ namespace jmodels
                 if (std::abs(un_hist_ten) > 1e-9) {
                     if (sign) {
                         kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
-                        if (kn_ <= 1)
+                        /*if (kn_ <= 1)
                         {
-                            kn_ = 1e-6;
-                        }
-                        kn_ = clampToBand(kn_, 1e-6, kn_initial_);
+                            kn_ = 1e-4;
+                        }*/
                     }
                 }
             }
         }
-        ten = -(res_tension_ + (tension_ - res_tension_) * ((1 - d_ts) + 1e-12)) * s->area_;
+        const double dts_eps = 1e-6; // practical threshold for "fully damaged"
+        const double dts_eff = std::min(std::max(d_ts, 0.0), 1.0);
+
+        double ten_strength = res_tension_ + (tension_ - res_tension_) * (1.0 - dts_eff);
+        if (dts_eff >= 1.0 - dts_eps) ten_strength = res_tension_;   // exactly residual at full damage
+
+        ten = -ten_strength * s->area_;
+        if (d_ts >= 1.0 - dts_eps && un_current < 0.0) { // in tension opening
+            s->normal_force_ = 0.0;
+            s->shear_force_ = DVect3(0.0, 0.0, 0.0);
+            s->normal_force_inc_ = s->normal_force_ - fn_old;
+            s->shear_force_inc_ = s->shear_force_ - fs_old;
+            s->state_ |= tension_now;
+            return;
+        }
+
 
         // check tensile failure
         bool tenflag = false;
@@ -814,6 +828,7 @@ namespace jmodels
         }
         // Compressive cap "failure" flag: when dc is near fully damaged in compression
         const bool compflag = (dc >= 0.99);
+        double dilation_c_step = 0.0;
         // shear force
         if (!tenflag && !compflag)
         {
@@ -856,31 +871,44 @@ namespace jmodels
                 //Store the current friction angle
                 double tc = 0.0;
 
-                double tan_friction_c = tan_res_friction_ + (tan_friction_ - tan_res_friction_) * (1 - ((cohesion_ - cc) / (cohesion_ - res_cohesion_)));
-                if (tan_friction_c) friction_current_ = atan(tan_friction_c) / dDegRad;
-                else friction_current_ = atan(tan_friction_) / dDegRad;
-                friction_current_ = (friction_ + dil_0);
+                const double tan_friction_c = tan_friction_;
+                friction_current_ = friction_ + dil_0; // for reporting
                 tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
+                if (tc < 0.0) tc = 0.0;
+                
 
                 if (dilation_) {
                     if (!s->state_) {
                         tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (dil_0)) * dDegRad);
                     }
                     else if (dc == 0.0) {
-                        double usm = s->shear_disp_.mag() - usel;
-                        // Guard against division by zero / negative zero-dilation parameter
-                        const double zdd = (s_zero_dilation_ > 0.0 ? s_zero_dilation_ : 1e20);
-                        double dilation_c = tan_dilation_ * (1.0 - (usm / zdd)) * std::exp(-delta * usm);
+                        // Only activate dilation after the elastic shear limit is exceeded
+                        const double usm_raw = s->shear_disp_.mag() - usel;
+                        const double usm = std::max(0.0, usm_raw);
+
+                        // Robust parameters
+                        const double zdd = std::max(s_zero_dilation_, 1e-12);
+                        const double delta_eff = std::max(0.0, delta); // prevent exp(+large) if delta < 0
+
+                        double dilation_c = tan_dilation_ * (1.0 - (usm / zdd)) * std::exp(-delta_eff * usm);
+
+                        // Bound dilation in [0, tan_dilation_]
+                        if (!std::isfinite(dilation_c)) dilation_c = 0.0;
+                        dilation_c = std::min(std::max(dilation_c, 0.0), tan_dilation_);
+
                         if (dilation_c < 0.0) dilation_c = 0.0;
                         tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (atan(dilation_c) / dDegRad)) * dDegRad);
                         dilation_current = (atan(dilation_c) / dDegRad);
                         friction_current_ = (friction_ + (atan(dilation_c) / dDegRad));
-                        double dusm = s->shear_disp_inc_.mag();
-                        if (ddil > 0.0 || dc == 0.0) {
-                            un_dilatant += dilation_c * dusm;
-                            const double dfn_dil = kn_ * s->area_ * dilation_c * dusm;
-                            s->normal_force_ += dfn_dil; // apply ONCE
-                        }
+                        //double dusm = s->shear_disp_inc_.mag();
+                        
+                        dilation_c_step = dilation_c;   // store for later use
+
+                        //if (ddil > 0.0 || dc == 0.0) {
+                        //    un_dilatant += dilation_c * dusm;
+                        //    const double dfn_dil = kn_ * s->area_ * dilation_c * dusm;
+                        //    s->normal_force_ += dfn_dil; // apply ONCE
+                        //}
                     }
                     else {
                         tc = cc * s->area_ + s->normal_force_ * tan((friction_)*dDegRad);
@@ -898,16 +926,36 @@ namespace jmodels
             //Check if slip
             if (f2 >= 0.0)
             {
+                // Slip ratio used by shearCorrection (projection)
+                double rat = 0.0;
+                if (fsm > 1e-30) rat = std::clamp(fsmax / fsm, 0.0, 1.0);
+
+                // Plastic part of shear increment (approx.)
+                const double slip_frac = std::clamp(1.0 - rat, 0.0, 1.0);
+                const double dusm_pl = slip_frac * s->shear_disp_inc_.mag();
+
+                // Apply shear projection
                 shearCorrection(s, &IPlas, fsm, fsmax, usel);
-                if (s->normal_disp_ < 0.0) {
-                    //Check f3
-                    double f3;
-                    f3 = Cnn * pow(s->normal_force_, 2) + Css * pow(s->shear_force_.mag(), 2) + Cn * s->normal_force_ - pow(comp, 2);
-                    if (f3 >= 0.0) {
-                        compCorrection(s, &IPlas, comp);
-                    }
+
+                // Apply dilatancy normal pumping ONLY from plastic slip, and only if dilation active
+                if (dilation_ && dc == 0.0 && dilation_c_step > 0.0 && dusm_pl > 0.0)
+                {
+                    un_dilatant += dilation_c_step * dusm_pl;
+                    const double dfn_dil = kn_ * s->area_ * dilation_c_step * dusm_pl;
+                    s->normal_force_ += dfn_dil;
                 }
-            }// if (f2)
+
+                // Now cap-check using the updated normal force
+                if (s->normal_disp_ < 0.0) {
+                    const double f3 =
+                        Cnn * s->normal_force_ * s->normal_force_
+                        + Css * std::pow(s->shear_force_.mag(), 2)
+                        + Cn * s->normal_force_
+                        - std::pow(comp, 2);
+                    if (f3 >= 0.0) compCorrection(s, &IPlas, comp);
+                }
+            }
+            // if (f2)
             //Check compressive failure (compressive cap)
             if (s->normal_disp_ < 0.0) {
                 //Check f3
@@ -993,16 +1041,31 @@ namespace jmodels
     }//run
 
 
-    bool JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten, bool& tenflag) {
+    bool JModelYopi::tensionCorrection(State* s, uint32* IPlasticity, double& ten, bool& tenflag)
+    {
         if (IPlasticity) *IPlasticity = 1;
-        s->normal_force_ = ten;
-        if (!s->normal_force_) {
-            s->shear_force_ = DVect3(0, 0, 0);
-            tenflag = true; // complete tensile failure
-        }
         s->state_ |= tension_now;
+
+        const double ten_eps = 1e-9 * std::max(1.0, std::abs(tension_ * s->area_)); // scale-aware
+
+        // Apply tensile cap (traction cannot exceed tensile capacity)
+        s->normal_force_ = ten;
+
+        // If capacity is essentially zero (or residual is intended to be zero), open the joint:
+        if (std::abs(ten) <= ten_eps) {
+            s->normal_force_ = 0.0;
+            s->shear_force_ = DVect3(0.0, 0.0, 0.0);
+            tenflag = true;
+            return tenflag;
+        }
+
+        // Even with residual tension, do not keep a cohesive shear spring when in tension failure:
+        // (Optional but strongly stabilizing in large-strain)
+        s->shear_force_ = DVect3(0.0, 0.0, 0.0);
+        tenflag = true;
         return tenflag;
     }
+
 
     void JModelYopi::shearCorrection(State* s, uint32* IPlasticity, double& fsm, double& fsmax, double& usel) {
         if (IPlasticity) *IPlasticity = 2;
