@@ -44,11 +44,13 @@ namespace jmodels
     }
     // Clamp damage variables in [0,1] and snap to 1 once they are "close enough"
     // to avoid asymptotic approach without ever numerically reaching 1.
+    #include <cmath> // ensure std::isfinite is available
     inline double clampDamage(double v) {
         if (v <= 0.0) return 0.0;
-        if (v >= 1.0) return 1.0;
+        if (v >= 1.0 - 1e-8) return 1.0;
         return v;
     }
+
     inline double clampToBand(double v, double lo, double hi) {
         if (!std::isfinite(v)) return lo;
         if (v < lo) return lo;
@@ -726,42 +728,61 @@ namespace jmodels
 
         double ten;
         double comp = 0.0;
-        if (!res_comp_) res_comp_ = 0.0;
-        double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
-        double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
-        double kappa_ = ucel_ * compression_;
-        double gamma_ = 2.0;
-        m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
-            + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
-        if (m_ < 1.5) m_ = 1.5;
-        double ucul_ = m_ * ucel_;
+        const double eps = 1e-12;
 
-        //Define the softening on compressive strength
-        if (s->state_ || jumptoDC) {
-            if ((un_current >= ucel_) && (un_current < ucul_)) {
-                dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
-                if (dn_ > 0.0) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
+        // Require sane compression parameters
+        if (!std::isfinite(compression_) || compression_ <= eps) {
+            dc = 0.0;
+            dc_hist = 0.0;
+            comp = 0.0;
+        }
+        else {
+            // sanitize residual compression into [0, compression_]
+            if (!std::isfinite(res_comp_) || res_comp_ < 0.0) res_comp_ = 0.0;
+            if (res_comp_ > compression_) res_comp_ = compression_;
+
+            // If no softening is possible (res == peak), force dc=0 and skip exponent form
+            if (std::abs(compression_ - res_comp_) <= eps) {
+                dc = 0.0;
             }
-            else if (un_current >= ucul_) {
-                double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
-                dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
-                if (dn_ > 0.0) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
+
+            // continue with your existing mid_comp/m_/dc logic afterwards
+            double mid_comp = res_comp_ + (compression_ - res_comp_) / 2.0;
+            double beta_ = ucel_ * res_comp_; //Coefficient for calculating intermediate ratio
+            double kappa_ = ucel_ * compression_;
+            double gamma_ = 2.0;
+            m_ = (G_c - 0.5 * (pow(compression_, 2) / (9 * kn_comp_)) - 0.5 * (ucel_ - uel_limit) * 1.3 * compression_
+                + 0.75 * kappa_ + 0.25 * beta_) / (0.25 * kappa_ * (2 + gamma_) - 0.25 * beta_ * (2 - 3 * gamma_));
+            if (m_ < 1.5) m_ = 1.5;
+            double ucul_ = m_ * ucel_;
+
+            //Define the softening on compressive strength
+            if (s->state_ || jumptoDC) {
+                if ((un_current >= ucel_) && (un_current < ucul_)) {
+                    dc = (1 - (mid_comp / compression_)) * pow((un_current - ucel_) / (ucul_ - ucel_), 2);
+                    if (dn_ > 0.0) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
+                }
+                else if (un_current >= ucul_) {
+                    double alpha = 2 * (mid_comp - compression_) / (ucul_ - ucel_);
+                    dc = 1 - (res_comp_ / compression_) - ((mid_comp - res_comp_) / compression_) * exp(alpha * (un_current - ucul_) / (mid_comp - res_comp_));
+                    if (dn_ > 0.0) peak_normal = std::min(peak_normal, compression_ * (1 - dc));
+                }
+                else {
+                    dc = 0.0;
+                }
+                // Clamp compressive damage to avoid infinite approach to 1
+                dc = clampDamage(dc);
+                dc_hist = clampDamage(dc_hist);
+                if (dc >= dc_hist) dc_hist = dc;
+                else dc = dc_hist;
+
+                comp = compression_ * (1 - dc) * s->area_;
             }
             else {
                 dc = 0.0;
+                comp = compression_ * (1 - dc) * s->area_;
             }
-            // Clamp compressive damage to avoid infinite approach to 1
-            dc = clampDamage(dc);
-            dc_hist = clampDamage(dc_hist);
-            if (dc >= dc_hist) dc_hist = dc;
-            else dc = dc_hist;
-
-            comp = compression_ * (1 - dc) * s->area_;
-        }
-        else {
-            dc = 0.0;
-            comp = compression_ * (1 - dc) * s->area_;
-        }
+        }        
 
         fc_current = comp / s->area_;
         uel_ = tension_ / kn_initial_;
@@ -774,7 +795,7 @@ namespace jmodels
                     tP_ = s->normal_disp_ / (tension_ / kn_);
                     dt = s->getYFromX(iTension_d_, tP_); //if table_dt is provided.
                 }
-                else if (G_I) {
+                else if (std::isfinite(G_I) && G_I > 0.0) {
                     tP_ = s->normal_disp_ - (tension_ / kn_initial_);
                     dt = 1.0 - exp(-tension_ / G_I * (s->normal_disp_ - (tension_ / kn_initial_))); //Exponential Softening
                 }
@@ -785,17 +806,27 @@ namespace jmodels
             dt = clampDamage(dt);
             dt_hist = clampDamage(dt_hist);
             d_ts = clampDamage(dt + ds - dt * ds);
+            if (!std::isfinite(d_ts)) d_ts = 0.0;
             // use secant-to-origin stiffness referenced to the initial elastic kn_initial_
             // Tension softening guard
             double uel_t = tension_ / kn_initial_;
             if (un_current < (-uel_t)) {
-                if (std::abs(un_hist_ten) > 1e-9) {
-                    if (sign) {
-                        kn_ = (tension_ * (1.0 - d_ts) / -un_hist_ten);
-                        /*if (kn_ <= 1)
-                        {
-                            kn_ = 1e-4;
-                        }*/
+                const double eps_u = 1e-9;
+
+                // choose clamp bounds (unit-consistent)
+                const double kn_min = std::max(1e-12, 1e-6 * kn_initial_); // >0 floor
+                const double kn_max = std::max(kn_min, 1.0 * kn_initial_); // cap
+                if (sign) {
+                    // protect denominator and compute candidate stiffness
+                    const double denom = std::max(std::abs(un_hist_ten), eps_u);
+                    double kn_cand = tension_ * (1.0 - d_ts) / denom;
+
+                    // sanitize
+                    if (!std::isfinite(kn_cand) || kn_cand <= 0.0) {
+                        kn_ = kn_min;
+                    }
+                    else {
+                        kn_ = std::clamp(kn_cand, kn_min, kn_max);
                     }
                 }
             }
@@ -838,7 +869,6 @@ namespace jmodels
             //Because the normal force is already in negative anyway, we don't have to change the signs
             double dil_0 = 0.0;
             if (dilation_) dil_0 = dilation_;
-            else dil_0 = 0.0;
             double fsmax = (cohesion_ * s->area_ + tan((friction_ + dil_0) * dDegRad) * s->normal_force_);
             double fsm = s->shear_force_.mag();
             double f2;
@@ -853,7 +883,7 @@ namespace jmodels
                     sP_ = s->shear_disp_.mag() / usel;
                     ds = s->getYFromX(iShear_d_, sP_);
                 }
-                else if (G_II) {
+                else if (std::isfinite(G_II) && G_II > 0.0) {
                     sP_ = s->shear_disp_.mag() - usel;
                     ds = 1 - exp(-cohesion_ / G_II * (s->shear_disp_.mag() - usel));
                 }
@@ -864,58 +894,64 @@ namespace jmodels
                 ds = clampDamage(ds);
                 ds_hist = clampDamage(ds_hist);
                 d_ts = clampDamage(dt + ds - dt * ds);
+                if (!std::isfinite(d_ts)) d_ts = 0.0;
                 double resamueff = tan_res_friction_;
                 if (!resamueff) resamueff = tan_friction_;
                 cc = res_cohesion_ + (cohesion_ - res_cohesion_) * (1 - d_ts);
 
-                //Store the current friction angle
-                double tc = 0.0;
+                // --- prerequisites (already in your scope) ---
+                // ds, friction_, res_friction_, dil_0, dilation_, tan_dilation_, s_zero_dilation_, delta, usel
+                // dDegRad defined
+                // cc already computed (possibly via d_ts)
+                // s->area_, s->normal_force_, s->shear_disp_.mag()
 
-                const double tan_friction_c = tan_friction_;
-                friction_current_ = friction_ + dil_0; // for reporting
-                tc = cc * s->area_ + s->normal_force_ * tan_friction_c;
-                if (tc < 0.0) tc = 0.0;
-                
+                const double ds_eff = std::min(std::max(d_ts, 0.0), 1.0);
+                const double soft_ds = 1.0 - ds_eff;
 
-                if (dilation_) {
-                    if (!s->state_) {
-                        tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (dil_0)) * dDegRad);
-                    }
-                    else if (dc == 0.0) {
-                        // Only activate dilation after the elastic shear limit is exceeded
-                        const double usm_raw = s->shear_disp_.mag() - usel;
-                        const double usm = std::max(0.0, usm_raw);
+                const double phi_peak_deg = friction_;
+                const double phi_res_deg = (res_friction_ > 0.0 ? res_friction_ : friction_);
 
-                        // Robust parameters
-                        const double zdd = std::max(s_zero_dilation_, 1e-12);
-                        const double delta_eff = std::max(0.0, delta); // prevent exp(+large) if delta < 0
+                double phi_eff_deg = phi_peak_deg;
+                double psi0_eff_deg = 0.0;
 
-                        double dilation_c = tan_dilation_ * (1.0 - (usm / zdd)) * std::exp(-delta_eff * usm);
+                // Dilatancy considered for strength only if enabled AND dil_0 provided
+                const bool use_dilatancy_strength = (dilation_ && (dil_0 > 0.0));
 
-                        // Bound dilation in [0, tan_dilation_]
-                        if (!std::isfinite(dilation_c)) dilation_c = 0.0;
-                        dilation_c = std::min(std::max(dilation_c, 0.0), tan_dilation_);
+                if (use_dilatancy_strength) {
 
-                        if (dilation_c < 0.0) dilation_c = 0.0;
-                        tc = cc * s->area_ + s->normal_force_ * tan((friction_ + (atan(dilation_c) / dDegRad)) * dDegRad);
-                        dilation_current = (atan(dilation_c) / dDegRad);
-                        friction_current_ = (friction_ + (atan(dilation_c) / dDegRad));
-                        //double dusm = s->shear_disp_inc_.mag();
-                        
-                        dilation_c_step = dilation_c;   // store for later use
+                    // --- dilatancy weakening modifies tc via psi0_eff_deg (slip-based rule) ---
+                    const double usm_raw = s->shear_disp_.mag() - usel;
+                    const double usm = std::max(0.0, usm_raw);
+                    const double zdd = std::max(s_zero_dilation_, 1e-12);
+                    const double delta_eff = std::max(0.0, delta);
 
-                        //if (ddil > 0.0 || dc == 0.0) {
-                        //    un_dilatant += dilation_c * dusm;
-                        //    const double dfn_dil = kn_ * s->area_ * dilation_c * dusm;
-                        //    s->normal_force_ += dfn_dil; // apply ONCE
-                        //}
-                    }
-                    else {
-                        tc = cc * s->area_ + s->normal_force_ * tan((friction_)*dDegRad);
-                    }
+                    double tan_psi_eff =
+                        tan_dilation_ * (1.0 - (usm / zdd)) * std::exp(-delta_eff * usm);
+
+                    if (!std::isfinite(tan_psi_eff)) tan_psi_eff = 0.0;
+                    tan_psi_eff = std::min(std::max(tan_psi_eff, 0.0), tan_dilation_);
+
+                    // keep phi fixed (no frictional softening when dilatancy governs the weakening)
+                    phi_eff_deg = phi_peak_deg;
+                    psi0_eff_deg = std::atan(tan_psi_eff) / dDegRad;
+
                 }
+                else {
+                    // --- NO dilatancy: apply ds-based frictional softening (Option B) ---
+                    psi0_eff_deg = 0.0;
+                    phi_eff_deg = phi_res_deg + (phi_peak_deg - phi_res_deg) * soft_ds;
+                }
+
+                // Safety clamp before tan()
+                const double ang_deg = std::min(std::max(phi_eff_deg + psi0_eff_deg, 0.0), 85.0);
+                const double mu_eff = std::tan(ang_deg * dDegRad);
+
+                double tc = cc * s->area_ + s->normal_force_ * mu_eff;
+                if (!std::isfinite(tc) || tc < 0.0) tc = 0.0;
+
                 fsmax = tc;
                 f2 = fsm - tc;
+
             }
             else {
                 f2 = fsm - fsmax;
